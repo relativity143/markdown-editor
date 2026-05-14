@@ -1,0 +1,99 @@
+{
+  "name": "markdown-editor",
+  "productName": "Markdown Editor",
+  "version": "1.0.0",
+  "description": "本地、类 Typora 的 Markdown 编辑器，支持 KaTeX 公式块。",
+  "main": "electron/main.js",
+  "author": "you",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "unset ELECTRON_RUN_AS_NODE && electron .",
+    "dev": "unset ELECTRON_RUN_AS_NODE && electron . --dev",
+    "pack": "unset ELECTRON_RUN_AS_NODE && electron-builder --dir",
+    "build": "unset ELECTRON_RUN_AS_NODE && electron-builder",
+    "build:mac": "unset ELECTRON_RUN_AS_NODE && electron-builder --mac",
+    "build:mac-arm": "unset ELECTRON_RUN_AS_NODE && electron-builder --mac --arm64",
+    "build:mac-x64": "unset ELECTRON_RUN_AS_NODE && electron-builder --mac --x64",
+    "build:mac-universal": "unset ELECTRON_RUN_AS_NODE && electron-builder --mac --universal",
+    "make-icon": "node scripts/make-icon.js",
+    "postinstall": "node scripts/make-icon.js || echo '(图标生成跳过，不影响运行)'"
+  },
+  "devDependencies": {
+    "electron": "^42.0.1",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.local.markdown-editor",
+    "productName": "Markdown Editor",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "index.html",
+      "styles.css",
+      "app.js",
+      "assets/**/*",
+      "package.json"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "md",
+        "name": "Markdown Document",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": "markdown",
+        "name": "Markdown Document",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": "mdown",
+        "name": "Markdown Document",
+        "role": "Editor",
+        "rank": "Alternate"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "identity": null,
+      "gatekeeperAssess": false,
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "Markdown Editor ${version}",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
+  }
+}

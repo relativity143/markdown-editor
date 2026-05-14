@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Markdown Editor</title>
+
+    <!-- Vditor: 类 Typora 的 WYSIWYG Markdown 编辑器（内置 KaTeX / MathJax 公式支持） -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vditor@3.10.4/dist/index.css" />
+
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <div class="app" id="app">
+        <!-- 顶部菜单栏 -->
+        <header class="titlebar">
+            <div class="titlebar-left">
+                <div class="logo">M↓</div>
+                <nav class="menu">
+                    <div class="menu-item" data-menu="file">
+                        <span>文件</span>
+                        <ul class="dropdown" id="menu-file">
+                            <li data-action="new">新建 <kbd>⌘N</kbd></li>
+                            <li data-action="open">打开... <kbd>⌘O</kbd></li>
+                            <li class="separator"></li>
+                            <li data-action="save">保存 <kbd>⌘S</kbd></li>
+                            <li data-action="save-as">另存为... <kbd>⌘⇧S</kbd></li>
+                            <li class="separator"></li>
+                            <li data-action="export-html">导出为 HTML</li>
+                            <li data-action="export-pdf">导出为 PDF (打印)</li>
+                        </ul>
+                    </div>
+                    <div class="menu-item" data-menu="edit">
+                        <span>编辑</span>
+                        <ul class="dropdown" id="menu-edit">
+                            <li data-action="undo">撤销 <kbd>⌘Z</kbd></li>
+                            <li data-action="redo">重做 <kbd>⌘⇧Z</kbd></li>
+                            <li class="separator"></li>
+                            <li data-action="find">查找 <kbd>⌘F</kbd></li>
+                        </ul>
+                    </div>
+                    <div class="menu-item" data-menu="insert">
+                        <span>插入</span>
+                        <ul class="dropdown" id="menu-insert">
+                            <li data-action="ins-h1">一级标题</li>
+                            <li data-action="ins-h2">二级标题</li>
+                            <li data-action="ins-h3">三级标题</li>
+                            <li class="separator"></li>
+                            <li data-action="ins-table">表格</li>
+                            <li data-action="ins-code">代码块</li>
+                            <li data-action="ins-math">公式块 (块级)</li>
+                            <li data-action="ins-math-inline">行内公式</li>
+                            <li data-action="ins-quote">引用</li>
+                            <li class="separator"></li>
+                            <li data-action="ins-image">图片</li>
+                            <li data-action="ins-link">链接</li>
+                        </ul>
+                    </div>
+                    <div class="menu-item" data-menu="view">
+                        <span>视图</span>
+                        <ul class="dropdown" id="menu-view">
+                            <li data-action="mode-wysiwyg">即时渲染 (WYSIWYG)</li>
+                            <li data-action="mode-ir">所见即所得</li>
+                            <li data-action="mode-sv">分屏预览</li>
+                            <li class="separator"></li>
+                            <li data-action="toggle-outline">大纲</li>
+                            <li data-action="toggle-theme">切换深色 / 浅色</li>
+                            <li data-action="toggle-typewriter">打字机模式</li>
+                        </ul>
+                    </div>
+                    <div class="menu-item" data-menu="help">
+                        <span>帮助</span>
+                        <ul class="dropdown" id="menu-help">
+                            <li data-action="help-syntax">Markdown 语法</li>
+                            <li data-action="help-math">公式语法 (KaTeX)</li>
+                            <li data-action="help-about">关于</li>
+                        </ul>
+                    </div>
+                </nav>
+            </div>
+            <div class="titlebar-center">
+                <span class="doc-title" id="doc-title">未命名.md</span>
+                <span class="dirty-dot" id="dirty-dot" title="未保存">●</span>
+            </div>
+            <div class="titlebar-right">
+                <button class="icon-btn" id="btn-files" title="文件树">▦</button>
+                <button class="icon-btn" id="btn-outline" title="大纲">≡</button>
+                <button class="icon-btn" id="btn-theme" title="主题">☾</button>
+            </div>
+        </header>
+
+        <!-- 主体 -->
+        <main class="main">
+            <!-- 最左侧：文件树 -->
+            <aside class="files" id="files">
+                <div class="files-header">
+                    <span class="files-title" id="files-title" title="">文件</span>
+                    <div class="files-actions">
+                        <button class="icon-btn small" id="files-open" title="打开文件夹 (⌘⇧O)">📂</button>
+                        <button class="icon-btn small" id="files-refresh" title="刷新">⟳</button>
+                    </div>
+                </div>
+                <div class="files-body" id="files-body">
+                    <div class="files-empty">
+                        点击 <strong>📂</strong> 选择文件夹<br/>
+                        或打开任意 <code>.md</code> 文件，<br/>
+                        我会自动挂载它所在目录。
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 左侧大纲 -->
+            <aside class="outline" id="outline">
+                <div class="outline-header">大纲</div>
+                <div class="outline-body" id="outline-body">
+                    <div class="outline-empty">在文档中添加 # 标题以显示大纲</div>
+                </div>
+            </aside>
+
+            <!-- 中央编辑区 -->
+            <section class="editor-wrap">
+                <div id="editor"></div>
+            </section>
+        </main>
+
+        <!-- 底部状态栏 -->
+        <footer class="statusbar">
+            <span id="stat-mode">即时渲染</span>
+            <span class="dot">·</span>
+            <span id="stat-words">0 字</span>
+            <span class="dot">·</span>
+            <span id="stat-chars">0 字符</span>
+            <span class="grow"></span>
+            <span id="stat-saved">就绪</span>
+        </footer>
+
+        <!-- 隐藏的文件输入 -->
+        <input type="file" id="file-input" accept=".md,.markdown,.txt" hidden />
+
+        <!-- 公式语法帮助弹窗 -->
+        <div class="modal" id="modal-math" hidden>
+            <div class="modal-dialog">
+                <div class="modal-header">
+                    <h3>KaTeX 公式语法速查</h3>
+                    <button class="icon-btn" data-close-modal>×</button>
+                </div>
+                <div class="modal-body">
+                    <p>行内公式使用 <code>$ ... $</code>，例如 <code>$E=mc^2$</code></p>
+                    <p>块级公式使用 <code>$$ ... $$</code>，独占一行。</p>
+                    <pre><code>$$
+\begin{aligned}
+\nabla \cdot \mathbf{E} &amp;= \frac{\rho}{\varepsilon_0} \\
+\nabla \cdot \mathbf{B} &amp;= 0 \\
+\nabla \times \mathbf{E} &amp;= -\frac{\partial \mathbf{B}}{\partial t} \\
+\nabla \times \mathbf{B} &amp;= \mu_0\mathbf{J} + \mu_0\varepsilon_0\frac{\partial \mathbf{E}}{\partial t}
+\end{aligned}
+$$</code></pre>
+                    <p>常用符号：</p>
+                    <ul>
+                        <li>分数：<code>\frac{a}{b}</code></li>
+                        <li>上下标：<code>x^{2}</code> / <code>x_{i}</code></li>
+                        <li>求和：<code>\sum_{i=1}^{n}</code></li>
+                        <li>积分：<code>\int_{a}^{b} f(x)\,dx</code></li>
+                        <li>极限：<code>\lim_{x \to \infty}</code></li>
+                        <li>希腊字母：<code>\alpha, \beta, \gamma, \pi, \theta</code></li>
+                        <li>矩阵：<code>\begin{pmatrix} a &amp; b \\ c &amp; d \end{pmatrix}</code></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- 关于弹窗 -->
+        <div class="modal" id="modal-about" hidden>
+            <div class="modal-dialog">
+                <div class="modal-header">
+                    <h3>关于</h3>
+                    <button class="icon-btn" data-close-modal>×</button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Markdown Editor</strong> — 一个本地、轻量、类 Typora 的 Markdown 编辑器。</p>
+                    <ul>
+                        <li>WYSIWYG 即时渲染</li>
+                        <li>KaTeX / MathJax 公式块</li>
+                        <li>代码高亮、表格、流程图、Mermaid</li>
+                        <li>本地读写文件（支持 File System Access API）</li>
+                        <li>自动保存到浏览器本地存储</li>
+                        <li>明暗双主题、大纲、打字机模式</li>
+                    </ul>
+                    <p>双击此文件即可在浏览器中打开使用。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 依赖：Vditor -->
+    <script src="https://cdn.jsdelivr.net/npm/vditor@3.10.4/dist/index.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
