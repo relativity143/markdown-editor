@@ -6,8 +6,8 @@
 
 | 芯片 | 推荐 (.dmg) | 便携 (.zip) |
 | --- | --- | --- |
-| **Apple Silicon** (M1 / M2 / M3 / M4) | [arm64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.0/Markdown.Editor-1.0.0-arm64.dmg) | [arm64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.0/Markdown.Editor-1.0.0-arm64-mac.zip) |
-| **Intel** | [x64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.0/Markdown.Editor-1.0.0.dmg) | [x64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.0/Markdown.Editor-1.0.0-mac.zip) |
+| **Apple Silicon** (M1 / M2 / M3 / M4) | [arm64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-arm64.dmg) | [arm64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-arm64-mac.zip) |
+| **Intel** | [x64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1.dmg) | [x64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-mac.zip) |
 
 或访问 [Releases 页面](https://github.com/relativity143/markdown-editor/releases/latest) 看所有版本。
 
