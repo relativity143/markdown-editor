@@ -98,6 +98,9 @@ $$
         fileHandle: null, // Web：File System Access API handle
         dirty: false,
         saveTimer: null,
+        savedContent: null,
+        suppressChanges: false,
+        suppressChangesTimer: null,
         workspace: null,            // 当前挂载的根目录路径
         treeCache: new Map(),       // path -> entries
         treeExpanded: new Set(),    // 展开的目录路径
@@ -124,9 +127,67 @@ $$
     // =====================================================
     // 初始化 Vditor
     // =====================================================
-    function initEditor() {
-        const initialContent = localStorage.getItem(LS_KEYS.content) || DEFAULT_CONTENT;
-        const initialMode = localStorage.getItem(LS_KEYS.mode) || "wysiwyg";
+    function getInitialContent() {
+        const saved = localStorage.getItem(LS_KEYS.content);
+        return saved !== null ? saved : DEFAULT_CONTENT;
+    }
+
+    function suppressChangeTracking() {
+        state.suppressChanges = true;
+        clearTimeout(state.suppressChangesTimer);
+    }
+
+    function resumeChangeTracking(delay = 80) {
+        clearTimeout(state.suppressChangesTimer);
+        state.suppressChangesTimer = setTimeout(() => {
+            state.suppressChanges = false;
+        }, delay);
+    }
+
+    function syncDirtyState() {
+        dirtyDot.classList.toggle("show", state.dirty);
+        if (ELECTRON) ELECTRON.setDirty(state.dirty);
+    }
+
+    function getEditorContent() {
+        if (!state.vditor || typeof state.vditor.getValue !== "function") return "";
+        return state.vditor.getValue();
+    }
+
+    function syncDirtyFromContent() {
+        state.dirty = getEditorContent() !== (state.savedContent ?? "");
+        syncDirtyState();
+    }
+
+    function setSavedSnapshot(content) {
+        state.savedContent = typeof content === "string" ? content : getEditorContent();
+        state.dirty = false;
+        syncDirtyState();
+    }
+
+    function updateModeButtons(activeMode) {
+        document.querySelectorAll(".mode-btn[data-mode]").forEach((btn) => {
+            btn.classList.toggle("active", btn.dataset.mode === activeMode);
+        });
+    }
+
+    function setEditorContent(content) {
+        if (!state.vditor) return;
+        suppressChangeTracking();
+        state.vditor.setValue(content);
+        updateCounter();
+        updateOutline();
+        resumeChangeTracking();
+    }
+
+    function initEditor(options = {}) {
+        const initialContent = Object.prototype.hasOwnProperty.call(options, "content")
+            ? options.content
+            : getInitialContent();
+        const initialMode = options.mode || localStorage.getItem(LS_KEYS.mode) || "wysiwyg";
+        const onReady = options.onReady;
+
+        suppressChangeTracking();
 
         state.vditor = new Vditor("editor", {
             height: "100%",
@@ -137,6 +198,8 @@ $$
             placeholder: "开始书写...",
             cache: { enable: false },
             preview: {
+                // 分屏（sv）模式依赖该值为 both / editor，否则左侧源码区会一直保持 display:none
+                mode: "both",
                 hljs: {
                     enable: true,
                     lineNumber: false,
@@ -187,13 +250,23 @@ $$
             counter: { enable: true, type: "markdown" },
             after: () => {
                 applyTheme(getCurrentTheme());
-                onContentChange();
-                statMode.textContent = modeLabel(state.vditor.getCurrentMode());
+                const currentMode = state.vditor.getCurrentMode();
+                statMode.textContent = modeLabel(currentMode);
+                updateModeButtons(currentMode);
+                if (state.savedContent === null) {
+                    state.savedContent = getEditorContent();
+                }
+                syncDirtyFromContent();
                 updateOutline();
                 updateCounter();
-                statSaved.textContent = "就绪";
+                if (!state.dirty && statSaved.textContent !== "已自动恢复") {
+                    statSaved.textContent = "就绪";
+                }
+                if (typeof onReady === "function") onReady();
+                resumeChangeTracking();
             },
             input: () => {
+                if (state.suppressChanges) return;
                 onContentChange();
             },
             blur: () => {
@@ -223,10 +296,12 @@ $$
     // 内容变更
     // =====================================================
     function onContentChange() {
-        state.dirty = true;
-        dirtyDot.classList.add("show");
+        syncDirtyFromContent();
+        if (!state.dirty) {
+            statSaved.textContent = `已保存 · ${formatTime()}`;
+            return;
+        }
         statSaved.textContent = "已修改 · 自动保存中...";
-        if (ELECTRON) ELECTRON.setDirty(true);
         updateCounter();
         scheduleAutoSave();
         // 大纲更新做防抖
@@ -243,10 +318,12 @@ $$
 
     function persistToLocal() {
         try {
-            const md = state.vditor ? state.vditor.getValue() : "";
+            const md = getEditorContent();
             localStorage.setItem(LS_KEYS.content, md);
             localStorage.setItem(LS_KEYS.filename, state.filename);
-            statSaved.textContent = `已自动保存 · ${formatTime()}`;
+            if (state.dirty) {
+                statSaved.textContent = `已自动保存 · ${formatTime()}`;
+            }
         } catch (e) {
             statSaved.textContent = "本地存储失败";
         }
@@ -438,7 +515,7 @@ $$
         if (state.dirty && !confirm("当前文档未保存，是否丢弃并打开新文件？")) return;
         try {
             const content = await ELECTRON.readFile(item.path);
-            state.vditor.setValue(content);
+            setEditorContent(content);
             state.filePath = item.path;
             state.filename = item.name;
             state.fileHandle = null;
@@ -492,7 +569,7 @@ $$
     // =====================================================
     async function actionNew() {
         if (state.dirty && !confirm("当前文档有未保存的修改，确定要新建吗？")) return;
-        state.vditor.setValue("# 新文档\n\n");
+        setEditorContent("# 新文档\n\n");
         state.filename = "未命名.md";
         state.filePath = null;
         state.fileHandle = null;
@@ -507,7 +584,7 @@ $$
             try {
                 const res = await ELECTRON.openDialog();
                 if (!res) return;
-                state.vditor.setValue(res.content);
+                setEditorContent(res.content);
                 state.filePath = res.path;
                 state.filename = res.path.split(/[\\/]/).pop();
                 state.fileHandle = null;
@@ -531,7 +608,7 @@ $$
                 });
                 const file = await handle.getFile();
                 const text = await file.text();
-                state.vditor.setValue(text);
+                setEditorContent(text);
                 state.filename = file.name;
                 state.fileHandle = handle;
                 markSaved();
@@ -549,7 +626,7 @@ $$
         const file = e.target.files[0];
         if (!file) return;
         const text = await file.text();
-        state.vditor.setValue(text);
+        setEditorContent(text);
         state.filename = file.name;
         state.fileHandle = null;
         markSaved();
@@ -654,10 +731,10 @@ $$
     }
 
     function markSaved() {
-        state.dirty = false;
-        dirtyDot.classList.remove("show");
+        clearTimeout(state.saveTimer);
+        setSavedSnapshot();
+        persistToLocal();
         statSaved.textContent = `已保存 · ${formatTime()}`;
-        if (ELECTRON) ELECTRON.setDirty(false);
     }
 
     function updateTitle() {
@@ -722,11 +799,38 @@ ${body}
     // =====================================================
     function setMode(mode) {
         if (!state.vditor) return;
-        state.vditor.setMode && state.vditor.setMode(mode);
-        // Vditor 旧版本以 vditor.vditor.currentMode 切换
-        try { state.vditor.vditor.currentMode = mode; } catch (e) {}
+        const currentMode = state.vditor.getCurrentMode();
+        if (currentMode === mode) return;
+
+        const content = state.vditor.getValue();
+        const wasDirty = state.dirty;
+        const savedContent = state.savedContent;
+        const savedText = statSaved.textContent;
+        clearTimeout(state.saveTimer);
+        suppressChangeTracking();
+        if (state.vditor.destroy) state.vditor.destroy();
+        document.getElementById("editor").innerHTML = "";
+        state.vditor = null;
         localStorage.setItem(LS_KEYS.mode, mode);
-        statMode.textContent = modeLabel(mode);
+
+        initEditor({
+            content,
+            mode,
+            onReady: () => {
+                if (wasDirty) {
+                    state.savedContent = savedContent;
+                    state.dirty = true;
+                    syncDirtyState();
+                } else {
+                    setSavedSnapshot();
+                }
+                statMode.textContent = modeLabel(mode);
+                updateModeButtons(mode);
+                statSaved.textContent = wasDirty ? savedText || "已修改" : savedText || "就绪";
+                updateCounter();
+                updateOutline();
+            },
+        });
         toast(`模式：${modeLabel(mode)}`);
     }
 
@@ -897,6 +1001,9 @@ ${body}
     $("btn-theme").addEventListener("click", toggleTheme);
     $("btn-outline").addEventListener("click", toggleOutline);
     $("btn-files").addEventListener("click", toggleFiles);
+    $("btn-mode-wysiwyg").addEventListener("click", () => setMode("wysiwyg"));
+    $("btn-mode-ir").addEventListener("click", () => setMode("ir"));
+    $("btn-mode-sv").addEventListener("click", () => setMode("sv"));
     $("files-open").addEventListener("click", (e) => { e.stopPropagation(); actionOpenFolder(); });
     $("files-refresh").addEventListener("click", (e) => { e.stopPropagation(); refreshTree(); });
 
@@ -972,7 +1079,7 @@ ${body}
 
     async function applyOpenedFile(filePath, content) {
         if (state.dirty && !confirm("当前文档有未保存的修改，是否丢弃并打开新文件？")) return;
-        state.vditor.setValue(content);
+        setEditorContent(content);
         state.filePath = filePath;
         state.filename = filePath.split(/[\\/]/).pop();
         state.fileHandle = null;
