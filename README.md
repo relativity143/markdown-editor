@@ -6,8 +6,8 @@
 
 | 芯片 | 推荐 (.dmg) | 便携 (.zip) |
 | --- | --- | --- |
-| **Apple Silicon** (M1 / M2 / M3 / M4) | [arm64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-arm64.dmg) | [arm64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-arm64-mac.zip) |
-| **Intel** | [x64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1.dmg) | [x64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-mac.zip) |
+| **Apple Silicon** (M1 / M2 / M3 / M4) | [arm64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.2/Markdown%20Editor-1.0.2-arm64.dmg) | [arm64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.2/Markdown%20Editor-1.0.2-arm64-mac.zip) |
+| **Intel** | [x64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.2/Markdown%20Editor-1.0.2.dmg) | [x64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.2/Markdown%20Editor-1.0.2-mac.zip) |
 
 或访问 [Releases 页面](https://github.com/relativity143/markdown-editor/releases/latest) 看所有版本。
 
@@ -15,6 +15,12 @@
 > 本版本是 ad-hoc 自签名（未购买 Apple Developer 公证）。
 
 ## 更新日志
+
+### v1.0.2 (2026-05-15)
+
+- 修复首次打开或切换文件时误判为“未保存”的问题
+- 修复即时渲染 / IR / 分屏预览切换不生效的问题
+- 在标题栏新增 `即渲 / IR / 分屏` 直接切换按钮
 
 ### v1.0.1 (2026-05-14)
 
@@ -30,6 +36,7 @@
 ---
 
 提供两种使用方式：
+
 1. **零安装：双击 `index.html`** 在浏览器里直接用。
 2. **原生 macOS 应用**：用 Electron 打包成 `.app`，双击启动、原生菜单、`.md` 文件双击关联。
 
@@ -101,7 +108,7 @@ curl -L https://cdn.jsdelivr.net/npm/vditor@3.10.4/dist/index.min.js -o vendor/v
 
 块级：
 
-```
+```tex
 $$
 \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
 $$
@@ -182,7 +189,7 @@ npm run make-icon
 
 ## 文件结构
 
-```
+```text
 .
 ├── index.html              # 主页面（标题栏 / 文件树 / 大纲 / 编辑器）
 ├── styles.css              # 类 Typora 的主题样式
