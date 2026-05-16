@@ -4,27 +4,32 @@
 
 ## 📦 下载
 
+### macOS
+
 | 芯片 | 推荐 (.dmg) | 便携 (.zip) |
 | --- | --- | --- |
-| **Apple Silicon** (M1 / M2 / M3 / M4) | [arm64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.2/Markdown.Editor-1.0.2-arm64.dmg) | [arm64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.2/Markdown.Editor-1.0.2-arm64-mac.zip) |
-| **Intel** | [x64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.2/Markdown.Editor-1.0.2.dmg) | [x64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.2/Markdown.Editor-1.0.2-mac.zip) |
-
-或访问 [Releases 页面](https://github.com/relativity143/markdown-editor/releases/latest) 看所有版本。
+| **Apple Silicon** (M1 / M2 / M3 / M4) | [arm64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-arm64.dmg) | [arm64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-arm64-mac.zip) |
+| **Intel** | [x64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1.dmg) | [x64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-mac.zip) |
 
 > **首次启动若提示「无法验证开发者」**：右键 App → **打开** → 弹窗里点 **打开**；或终端执行 `xattr -dr com.apple.quarantine "/Applications/Markdown Editor.app"`。  
 > 本版本是 ad-hoc 自签名（未购买 Apple Developer 公证）。
 
+### Windows
+
+| 格式 | 下载 |
+| --- | --- |
+| **安装包** (.exe) | [Markdown.Editor.Setup-1.0.1.exe](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor.Setup-1.0.1.exe) |
+| **便携版** (.zip) | [Markdown.Editor-1.0.1-win.zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-win.zip) |
+
+> 安装包支持自定义安装目录、创建桌面快捷方式和开始菜单。便携版解压即用，无需安装。
+
+或访问 [Releases 页面](https://github.com/relativity143/markdown-editor/releases/latest) 看所有版本。
+
 ## 更新日志
-
-### v1.0.2 (2026-05-15)
-
-- 修复首次打开或切换文件时误判为“未保存”的问题
-- 修复即时渲染 / IR / 分屏预览切换不生效的问题
-- 在标题栏新增 `即渲 / IR / 分屏` 直接切换按钮
 
 ### v1.0.1 (2026-05-14)
 
-- 书写区从居中改为靠左，左侧仅 24 px 留白，优化视觉效果
+- 书写区从居中改为靠左，左侧仅 24 px 留白，长时间码字时手肘更省力
 - 修复 README 中部分残留的旧版本路径
 
 ### v1.0.0 (2026-05-14)
@@ -35,10 +40,10 @@
 
 ---
 
-提供两种使用方式：
-
+提供三种使用方式：
 1. **零安装：双击 `index.html`** 在浏览器里直接用。
 2. **原生 macOS 应用**：用 Electron 打包成 `.app`，双击启动、原生菜单、`.md` 文件双击关联。
+3. **Windows 应用**：安装包或便携 zip，双击运行。
 
 ## 特性
 
@@ -51,7 +56,7 @@
 - **Mermaid / 流程图 / 时序图**（由 Vditor 提供）
 - **文件树侧栏**：选一个文件夹挂载为工作区，左侧树状浏览、点击直接打开；打开任意 `.md` 时也会自动把所在目录挂为工作区
 - **本地文件读写**：新建 / 打开 / 保存 / 另存为
-  - Electron 版：调用 macOS 原生对话框 + 直接读写文件
+  - 桌面版（macOS / Windows）：调用系统原生对话框 + 直接读写文件
   - 浏览器版：优先用 File System Access API，可直接覆盖原文件
 - **导出**：HTML 文件 / 通过系统打印为 PDF
 - **自动保存**到本地存储，下次打开自动恢复；窗口关闭不再阻塞
@@ -108,7 +113,7 @@ curl -L https://cdn.jsdelivr.net/npm/vditor@3.10.4/dist/index.min.js -o vendor/v
 
 块级：
 
-```tex
+```
 $$
 \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
 $$
@@ -116,9 +121,9 @@ $$
 
 更多语法见菜单：**帮助 → 公式语法 (KaTeX)**。
 
-## 打包为 macOS 应用
+## 从源码打包
 
-需要 Node.js（推荐 brew install node）。
+需要 Node.js（推荐 `brew install node` / Windows 上去 [nodejs.org](https://nodejs.org) 下载安装）。
 
 ```bash
 # 安装依赖（首次运行）
@@ -127,6 +132,7 @@ npm install
 # 开发模式（带 DevTools，热重载）
 npm start
 
+# ---------- macOS ----------
 # 打包为 .app + .dmg（Apple Silicon）
 npm run build:mac-arm
 
@@ -135,16 +141,25 @@ npm run build:mac-x64
 
 # 同时打包两种架构
 npm run build:mac
+
+# ---------- Windows ----------
+# 打包为 .exe 安装包 + .zip 便携版
+npm run build:win
 ```
 
 产物在 `dist/`（版本号跟随 `package.json` 中的 `version` 字段）：
 
+**macOS**
 - `dist/mac-arm64/Markdown Editor.app` — Apple Silicon，直接双击运行
 - `dist/mac/Markdown Editor.app` — Intel x86_64，直接双击运行
 - `dist/Markdown Editor-<ver>-arm64.dmg` / `<ver>.dmg` — 拖拽到 Applications 的安装镜像
 - `dist/Markdown Editor-<ver>-arm64-mac.zip` / `<ver>-mac.zip` — 便携 zip
 
-首次右键 → 打开（一次性绕过 Gatekeeper 提示），之后直接双击即可。
+**Windows**
+- `dist/Markdown Editor Setup <ver>.exe` — NSIS 安装包（支持自定义安装目录）
+- `dist/Markdown Editor-<ver>-win.zip` — 便携版，解压即用
+
+macOS 首次右键 → 打开（一次性绕过 Gatekeeper 提示），之后直接双击即可。
 
 ### Electron 原生集成
 
@@ -189,7 +204,7 @@ npm run make-icon
 
 ## 文件结构
 
-```text
+```
 .
 ├── index.html              # 主页面（标题栏 / 文件树 / 大纲 / 编辑器）
 ├── styles.css              # 类 Typora 的主题样式

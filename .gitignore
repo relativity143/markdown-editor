@@ -9,6 +9,7 @@ dist/
 out/
 build/*
 !build/icon.icns
+!build/icon.ico
 *.app
 *.dmg
 *.zip

@@ -16,6 +16,7 @@
     "build:mac-arm": "unset ELECTRON_RUN_AS_NODE && electron-builder --mac --arm64",
     "build:mac-x64": "unset ELECTRON_RUN_AS_NODE && electron-builder --mac --x64",
     "build:mac-universal": "unset ELECTRON_RUN_AS_NODE && electron-builder --mac --universal",
+    "build:win": "unset ELECTRON_RUN_AS_NODE && electron-builder --win",
     "make-icon": "node scripts/make-icon.js",
     "postinstall": "node scripts/make-icon.js || echo '(图标生成跳过，不影响运行)'"
   },
@@ -79,6 +80,26 @@
       "identity": null,
       "gatekeeperAssess": false,
       "hardenedRuntime": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Markdown Editor"
     },
     "dmg": {
       "title": "Markdown Editor ${version}",
