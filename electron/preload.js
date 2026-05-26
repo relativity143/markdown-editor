@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // 状态
     setDirty: (dirty) => ipcRenderer.send("app:set-dirty", dirty),
     setTitle: (title, filePath) => ipcRenderer.send("app:set-title", title, filePath),
+    ready: () => ipcRenderer.send("renderer:ready"),
     print: () => ipcRenderer.send("app:print"),
 
     // 事件

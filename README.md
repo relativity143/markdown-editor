@@ -8,8 +8,8 @@
 
 | 芯片 | 推荐 (.dmg) | 便携 (.zip) |
 | --- | --- | --- |
-| **Apple Silicon** (M1 / M2 / M3 / M4) | [arm64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-arm64.dmg) | [arm64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-arm64-mac.zip) |
-| **Intel** | [x64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1.dmg) | [x64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.1/Markdown.Editor-1.0.1-mac.zip) |
+| **Apple Silicon** (M1 / M2 / M3 / M4) | [arm64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.3/Markdown.Editor-1.0.3-arm64.dmg) | [arm64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.3/Markdown.Editor-1.0.3-arm64-mac.zip) |
+| **Intel** | [x64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.3/Markdown.Editor-1.0.3.dmg) | [x64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.3/Markdown.Editor-1.0.3-mac.zip) |
 
 > **首次启动若提示「无法验证开发者」**：右键 App → **打开** → 弹窗里点 **打开**；或终端执行 `xattr -dr com.apple.quarantine "/Applications/Markdown Editor.app"`。  
 > 本版本是 ad-hoc 自签名（未购买 Apple Developer 公证）。
@@ -26,6 +26,19 @@
 或访问 [Releases 页面](https://github.com/relativity143/markdown-editor/releases/latest) 看所有版本。
 
 ## 更新日志
+
+### v1.0.3 (2026-05-26)
+
+- 修复粘贴含 `$$...$$` 公式时，单独一行的 `=` 被误识别为 Markdown 标题
+- 修复从微信、Finder 等外部应用打开 `.md` / `.txt` 文件时无法载入的问题
+- 增加 `.txt` / `.text` 文件关联
+- 优化书写区布局
+
+### v1.0.2 (2026-05-15)
+
+- 修复首次打开或切换文件时误判为“未保存”的问题
+- 修复即时渲染 / IR / 分屏预览切换不生效的问题
+- 在标题栏新增 `即渲 / IR / 分屏` 直接切换按钮
 
 ### v1.0.1 (2026-05-14)
 

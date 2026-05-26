@@ -180,6 +180,62 @@ $$
         resumeChangeTracking();
     }
 
+    function normalizePastedMarkdown(text) {
+        if (!text || !text.includes("$$")) return text;
+        // In WYSIWYG paste, a standalone "=" inside $$...$$ can be parsed as a Setext H1 underline.
+        // Merge it with the following formula line so it remains LaTeX, not a Markdown heading.
+        return text.replace(/\$\$([\s\S]*?)\$\$/g, (_match, body) => {
+            const lines = body.replace(/^\r?\n/, "").replace(/\r?\n$/, "").split(/\r?\n/);
+            const out = [];
+            for (let i = 0; i < lines.length; i += 1) {
+                const line = lines[i];
+                if (/^\s*=+\s*$/.test(line) && i + 1 < lines.length) {
+                    out.push(`${line.trim()} ${lines[i + 1].trimStart()}`);
+                    i += 1;
+                } else {
+                    out.push(line);
+                }
+            }
+            return `$$\n${out.join("\n")}\n$$`;
+        });
+    }
+
+    function isStandaloneDisplayMathPaste(text) {
+        if (!text) return false;
+        const trimmed = text.trim();
+        const markers = trimmed.match(/\$\$/g) || [];
+        return markers.length === 2 && trimmed.startsWith("$$") && trimmed.endsWith("$$");
+    }
+
+    function hasStandaloneMathEqualsLine(text) {
+        return /\$\$[\s\S]*?(?:^|\n)\s*=+\s*(?:\n|$)[\s\S]*?\$\$/m.test(text || "");
+    }
+
+    function setUnsavedStatus(message = "未保存 · 自动备份中...") {
+        statSaved.textContent = message;
+    }
+
+    function setupPasteGuard() {
+        document.addEventListener("paste", (event) => {
+            if (!state.vditor || getCurrentModeSafe() !== "wysiwyg") return;
+            const editorRoot = document.getElementById("editor");
+            if (!editorRoot || !editorRoot.contains(event.target)) return;
+            const clipboard = event.clipboardData;
+            const text = clipboard && clipboard.getData("text/plain");
+            const html = clipboard && clipboard.getData("text/html");
+            if (!text || html) return;
+            if (!isStandaloneDisplayMathPaste(text) || !hasStandaloneMathEqualsLine(text)) return;
+            const normalized = normalizePastedMarkdown(text);
+            if (normalized === text) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            setTimeout(() => {
+                if (state.vditor) state.vditor.insertValue(normalized);
+            }, 0);
+        }, true);
+    }
+
     function initEditor(options = {}) {
         const initialContent = Object.prototype.hasOwnProperty.call(options, "content")
             ? options.content
@@ -301,12 +357,19 @@ $$
             statSaved.textContent = `已保存 · ${formatTime()}`;
             return;
         }
-        statSaved.textContent = "已修改 · 自动保存中...";
-        updateCounter();
-        scheduleAutoSave();
-        // 大纲更新做防抖
+        markDirtyPendingSave();
+    }
+
+    function queueOutlineUpdate() {
         clearTimeout(state._outlineTimer);
         state._outlineTimer = setTimeout(updateOutline, 250);
+    }
+
+    function markDirtyPendingSave() {
+        setUnsavedStatus();
+        updateCounter();
+        scheduleAutoSave();
+        queueOutlineUpdate();
     }
 
     function scheduleAutoSave() {
@@ -322,7 +385,7 @@ $$
             localStorage.setItem(LS_KEYS.content, md);
             localStorage.setItem(LS_KEYS.filename, state.filename);
             if (state.dirty) {
-                statSaved.textContent = `已自动保存 · ${formatTime()}`;
+                setUnsavedStatus(`未保存 · 已自动备份 ${formatTime()}`);
             }
         } catch (e) {
             statSaved.textContent = "本地存储失败";
@@ -905,6 +968,104 @@ ${body}
         "ins-link": () => insert("[文本](https://)"),
     };
 
+    function getCurrentModeSafe() {
+        return state.vditor && typeof state.vditor.getCurrentMode === "function"
+            ? state.vditor.getCurrentMode()
+            : null;
+    }
+
+    function getWysiwygRoot() {
+        return document.querySelector(".vditor-wysiwyg");
+    }
+
+    function getSelectionAnchorElement(selection) {
+        if (!selection || !selection.anchorNode) return null;
+        return selection.anchorNode.nodeType === Node.ELEMENT_NODE
+            ? selection.anchorNode
+            : selection.anchorNode.parentElement;
+    }
+
+    function getCurrentWysiwygBlock(selection = window.getSelection()) {
+        const root = getWysiwygRoot();
+        const anchor = getSelectionAnchorElement(selection);
+        if (!root || !anchor || !root.contains(anchor)) return null;
+        const block = anchor.closest("p, h1, h2, h3, h4, h5, h6");
+        return block && root.contains(block) ? block : null;
+    }
+
+    function placeCaretAtBlockEnd(block) {
+        if (!block) return;
+        if (!block.firstChild || (block.childNodes.length === 1 && block.firstChild.nodeName === "BR")) {
+            block.textContent = "";
+            block.appendChild(document.createTextNode(""));
+        }
+        const selection = window.getSelection();
+        if (!selection) return;
+        const range = document.createRange();
+        range.selectNodeContents(block);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+    }
+
+    function syncAfterManualEdit() {
+        state.dirty = true;
+        syncDirtyState();
+        markDirtyPendingSave();
+        const root = getWysiwygRoot();
+        if (!root) return;
+        requestAnimationFrame(() => {
+            root.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+    }
+
+    function replaceBlockWithHeading(block, level, keepText = true) {
+        if (!block || level < 1 || level > 6) return false;
+        const heading = document.createElement(`h${level}`);
+        const dataBlock = block.getAttribute("data-block");
+        if (dataBlock !== null) heading.setAttribute("data-block", dataBlock);
+        heading.setAttribute("data-marker", "#".repeat(level));
+
+        if (keepText) {
+            while (block.firstChild) heading.appendChild(block.firstChild);
+        }
+
+        if (!heading.firstChild) heading.appendChild(document.createTextNode(""));
+        block.replaceWith(heading);
+        placeCaretAtBlockEnd(heading);
+        syncAfterManualEdit();
+        return true;
+    }
+
+    function applyHeadingShortcut(level) {
+        if (getCurrentModeSafe() === "wysiwyg") {
+            const block = getCurrentWysiwygBlock();
+            if (block) return replaceBlockWithHeading(block, level, true);
+        }
+        const action = insertActions[`ins-h${level}`];
+        if (action) {
+            action();
+            return true;
+        }
+        return false;
+    }
+
+    function handleWysiwygHeadingMarker(event) {
+        if (event.defaultPrevented || event.key !== " " || event.metaKey || event.ctrlKey || event.altKey) {
+            return false;
+        }
+        if (getCurrentModeSafe() !== "wysiwyg") return false;
+        const selection = window.getSelection();
+        if (!selection || !selection.isCollapsed) return false;
+        const block = getCurrentWysiwygBlock(selection);
+        if (!block || block.tagName !== "P") return false;
+        const text = (block.textContent || "").replace(/\u200b/g, "").trim();
+        const match = text.match(/^(#{1,6})$/);
+        if (!match) return false;
+        event.preventDefault();
+        return replaceBlockWithHeading(block, match[1].length, false);
+    }
+
     // =====================================================
     // 菜单交互
     // =====================================================
@@ -1011,6 +1172,7 @@ ${body}
     // 全局快捷键
     // =====================================================
     document.addEventListener("keydown", (e) => {
+        if (handleWysiwygHeadingMarker(e)) return;
         const mod = e.metaKey || e.ctrlKey;
         if (!mod) return;
         const k = e.key.toLowerCase();
@@ -1019,6 +1181,9 @@ ${body}
         else if (k === "o" && !e.shiftKey) { e.preventDefault(); actionOpen(); }
         else if (k === "o" && e.shiftKey) { e.preventDefault(); actionOpenFolder(); }
         else if (k === "n") { e.preventDefault(); actionNew(); }
+        else if (k === "1") { e.preventDefault(); applyHeadingShortcut(1); }
+        else if (k === "2") { e.preventDefault(); applyHeadingShortcut(2); }
+        else if (k === "3") { e.preventDefault(); applyHeadingShortcut(3); }
     });
 
     // 退出前自动保存到 localStorage（不阻塞关闭：用户的内容总是会自动恢复）
@@ -1072,6 +1237,7 @@ ${body}
                 applyOpenedFile(filePath, content);
             }
         });
+        if (ELECTRON.ready) ELECTRON.ready();
         // 恢复上次挂载的文件夹
         const lastWs = localStorage.getItem(LS_KEYS.workspace);
         if (lastWs) setWorkspace(lastWs, false).catch(() => {});
@@ -1106,6 +1272,7 @@ ${body}
     window.addEventListener("DOMContentLoaded", () => {
         applyTheme(getCurrentTheme());
         setupMenus();
+        setupPasteGuard();
         setupElectron();
         updateTitle();
         if (typeof Vditor === "undefined") {

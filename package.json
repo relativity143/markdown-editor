@@ -1,7 +1,7 @@
 {
   "name": "markdown-editor",
   "productName": "Markdown Editor",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "本地、类 Typora 的 Markdown 编辑器，支持 KaTeX 公式块。",
   "main": "electron/main.js",
   "author": "you",
@@ -55,6 +55,18 @@
       {
         "ext": "mdown",
         "name": "Markdown Document",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": "txt",
+        "name": "Plain Text Document",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": "text",
+        "name": "Plain Text Document",
         "role": "Editor",
         "rank": "Alternate"
       }

@@ -10,6 +10,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme } = require("electron");
 const path = require("path");
 const fs = require("fs/promises");
+const { fileURLToPath } = require("url");
 
 const isMac = process.platform === "darwin";
 const isDev = process.argv.includes("--dev") || !app.isPackaged;
@@ -19,33 +20,58 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 
 let mainWindow = null;
-// 暂存「应用还没就绪就被打开的文件」
-let pendingFileToOpen = null;
+let rendererReady = false;
+// 暂存「应用/渲染进程还没就绪就被打开的文件」
+const pendingFilesToOpen = [];
 
 // =====================================================
 // 启动参数与 open-file 事件中提取文件路径
 // =====================================================
+function normalizeFilePath(input) {
+    if (!input || typeof input !== "string") return null;
+    const value = input.trim();
+    if (!value) return null;
+    if (value.startsWith("file://")) {
+        try {
+            return fileURLToPath(value);
+        } catch (_) {
+            return decodeURIComponent(value.replace(/^file:\/\//, ""));
+        }
+    }
+    return value;
+}
+
+function isSupportedDocument(filePath) {
+    return /\.(md|markdown|mdown|txt|text)$/i.test(filePath || "");
+}
+
 function pickFileFromArgs(argv) {
     if (!argv) return null;
     // 跳过可执行路径与已知 flag
     for (let i = 1; i < argv.length; i++) {
-        const a = argv[i];
+        const a = normalizeFilePath(argv[i]);
         if (!a || a.startsWith("--") || a.startsWith("-")) continue;
         // dev 模式下，argv 含 "."
         if (a === "." || a === path.resolve(".")) continue;
-        if (/\.(md|markdown|mdown|txt)$/i.test(a)) return a;
+        if (isSupportedDocument(a)) return a;
     }
     return null;
+}
+
+function queueOpenFile(filePath) {
+    const normalized = normalizeFilePath(filePath);
+    if (!normalized || !isSupportedDocument(normalized)) return;
+    if (!mainWindow || !rendererReady) {
+        pendingFilesToOpen.push(normalized);
+        return;
+    }
+    sendOpenFile(normalized);
 }
 
 // macOS：双击 .md 或 Dock 拖拽时
 app.on("open-file", (event, filePath) => {
     event.preventDefault();
-    if (mainWindow) {
-        sendOpenFile(filePath);
-    } else {
-        pendingFileToOpen = filePath;
-    }
+    queueOpenFile(filePath);
 });
 
 // 第二次启动（已有实例）时，把新文件丢给已有窗口
@@ -54,25 +80,33 @@ app.on("second-instance", (event, argv) => {
     if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.focus();
-        if (file) sendOpenFile(file);
+        if (file) queueOpenFile(file);
     }
 });
 
 function sendOpenFile(filePath) {
-    if (!mainWindow || !filePath) return;
-    fs.readFile(filePath, "utf8")
+    const normalized = normalizeFilePath(filePath);
+    if (!mainWindow || !normalized) return;
+    fs.readFile(normalized, "utf8")
         .then((content) => {
-            mainWindow.webContents.send("file:opened", { path: filePath, content });
+            mainWindow.webContents.send("file:opened", { path: normalized, content });
         })
         .catch((err) => {
             dialog.showErrorBox("打开失败", err.message);
         });
 }
 
+function flushPendingOpenFiles() {
+    if (!mainWindow || !rendererReady) return;
+    const files = pendingFilesToOpen.splice(0);
+    for (const filePath of files) sendOpenFile(filePath);
+}
+
 // =====================================================
 // 创建窗口
 // =====================================================
 function createWindow() {
+    rendererReady = false;
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
@@ -99,11 +133,9 @@ function createWindow() {
         mainWindow.show();
         if (isDev) mainWindow.webContents.openDevTools({ mode: "detach" });
         // 推送启动时关联打开的文件
-        const initial = pendingFileToOpen || pickFileFromArgs(process.argv);
-        if (initial) {
-            sendOpenFile(initial);
-            pendingFileToOpen = null;
-        }
+        const initial = pickFileFromArgs(process.argv);
+        if (initial) queueOpenFile(initial);
+        flushPendingOpenFiles();
     });
 
     // 拦截外链：用系统浏览器打开
@@ -114,14 +146,15 @@ function createWindow() {
 
     mainWindow.on("closed", () => {
         mainWindow = null;
+        rendererReady = false;
     });
 
     // 拖拽文件进入窗口
     mainWindow.webContents.on("will-navigate", (e, url) => {
-        if (url.startsWith("file://") && /\.(md|markdown|mdown|txt)$/i.test(url)) {
+        const filePath = normalizeFilePath(url);
+        if (url.startsWith("file://") && isSupportedDocument(filePath)) {
             e.preventDefault();
-            const filePath = decodeURIComponent(url.replace(/^file:\/\//, ""));
-            sendOpenFile(filePath);
+            queueOpenFile(filePath);
         }
     });
 }
@@ -217,9 +250,9 @@ function buildMenu() {
         {
             label: "插入",
             submenu: [
-                { label: "一级标题", click: () => send("menu:action", "ins-h1") },
-                { label: "二级标题", click: () => send("menu:action", "ins-h2") },
-                { label: "三级标题", click: () => send("menu:action", "ins-h3") },
+                { label: "一级标题", accelerator: "CmdOrCtrl+1", click: () => send("menu:action", "ins-h1") },
+                { label: "二级标题", accelerator: "CmdOrCtrl+2", click: () => send("menu:action", "ins-h2") },
+                { label: "三级标题", accelerator: "CmdOrCtrl+3", click: () => send("menu:action", "ins-h3") },
                 { type: "separator" },
                 { label: "表格", click: () => send("menu:action", "ins-table") },
                 { label: "代码块", click: () => send("menu:action", "ins-code") },
@@ -386,6 +419,11 @@ ipcMain.handle("fs:list-dir", async (_e, dirPath) => {
 });
 
 ipcMain.handle("app:platform", async () => process.platform);
+
+ipcMain.on("renderer:ready", () => {
+    rendererReady = true;
+    flushPendingOpenFiles();
+});
 
 ipcMain.on("app:print", () => {
     if (mainWindow) mainWindow.webContents.print({ silent: false, printBackground: true });

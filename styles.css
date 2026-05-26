@@ -20,6 +20,8 @@
     --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
     --font-mono: "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
     --font-serif: "Source Serif Pro", "Iowan Old Style", "Apple Garamond", "PingFang SC", "Microsoft YaHei", serif;
+    --editor-content-max: 1120px;
+    --editor-content-gutter: 48px;
 }
 
 /* ===== 主题：深色 ===== */
@@ -446,13 +448,14 @@ html.is-electron .logo { display: none; }
     font-family: var(--font-serif) !important;
     font-size: 16px !important;
     line-height: 1.75 !important;
-    max-width: 860px !important;
-    margin: 0 auto 0 24px !important;
-    padding: 32px 60px 200px !important;
+    width: min(var(--editor-content-max), calc(100% - var(--editor-content-gutter))) !important;
+    max-width: none !important;
+    margin: 0 auto !important;
+    padding: 32px 48px 200px !important;
 }
 
 .vditor-ir pre.vditor-reset, .vditor-wysiwyg pre.vditor-reset {
-    padding: 32px 60px 200px !important;
+    padding: 32px 48px 200px !important;
 }
 
 /* 标题样式（仿 Typora） */
@@ -502,16 +505,26 @@ html.is-electron .logo { display: none; }
 
 .vditor-reset pre code { font-family: var(--font-mono); font-size: 13px; }
 
-.vditor-reset table {
+.vditor-reset table, .vditor-wysiwyg table, .vditor-ir table {
     border-collapse: collapse;
     margin: 1em 0;
     width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
 }
-.vditor-reset table th, .vditor-reset table td {
+.vditor-wysiwyg table, .vditor-ir table {
+    display: table !important;
+}
+.vditor-reset table th, .vditor-reset table td,
+.vditor-wysiwyg table th, .vditor-wysiwyg table td,
+.vditor-ir table th, .vditor-ir table td {
     border: 1px solid var(--border);
     padding: 8px 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
-.vditor-reset table th {
+.vditor-reset table th, .vditor-wysiwyg table th, .vditor-ir table th {
     background: var(--bg-soft);
     font-weight: 600;
 }
@@ -647,6 +660,7 @@ html.is-electron .logo { display: none; }
     .files, .outline { display: none; }
     .mode-switch { display: none; }
     .vditor-reset, .vditor-ir, .vditor-wysiwyg, .vditor-sv {
+        width: calc(100% - 24px) !important;
         padding: 16px !important;
         font-size: 15px !important;
     }
