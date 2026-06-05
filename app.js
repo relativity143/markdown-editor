@@ -174,41 +174,98 @@ $$
     function setEditorContent(content) {
         if (!state.vditor) return;
         suppressChangeTracking();
-        state.vditor.setValue(content);
+        state.vditor.setValue(escapePipesInTableMath(content));
         updateCounter();
         updateOutline();
         resumeChangeTracking();
     }
 
+    // 失焦时修正表格内公式（覆盖直接输入 / 粘贴后 "|" 拆坏公式的情况），并触发重新渲染。
+    function fixTableMathInEditor() {
+        if (!state.vditor || typeof state.vditor.getValue !== "function") return;
+        const current = state.vditor.getValue();
+        const fixed = escapePipesInTableMath(current);
+        if (fixed === current) return;
+        suppressChangeTracking();
+        state.vditor.setValue(fixed);
+        resumeChangeTracking();
+        syncDirtyFromContent();
+        updateCounter();
+        updateOutline();
+    }
+
     function normalizePastedMarkdown(text) {
-        if (!text || !text.includes("$$")) return text;
-        // In WYSIWYG paste, a standalone "=" inside $$...$$ can be parsed as a Setext H1 underline.
-        // Merge it with the following formula line so it remains LaTeX, not a Markdown heading.
-        return text.replace(/\$\$([\s\S]*?)\$\$/g, (_match, body) => {
-            const lines = body.replace(/^\r?\n/, "").replace(/\r?\n$/, "").split(/\r?\n/);
-            const out = [];
-            for (let i = 0; i < lines.length; i += 1) {
-                const line = lines[i];
-                if (/^\s*=+\s*$/.test(line) && i + 1 < lines.length) {
-                    out.push(`${line.trim()} ${lines[i + 1].trimStart()}`);
-                    i += 1;
-                } else {
-                    out.push(line);
+        if (!text) return text;
+        let out = text;
+        if (out.includes("$$")) {
+            // In WYSIWYG paste, a standalone "=" inside $$...$$ can be parsed as a Setext H1 underline.
+            // Merge it with the following formula line so it remains LaTeX, not a Markdown heading.
+            out = out.replace(/\$\$([\s\S]*?)\$\$/g, (_match, body) => {
+                const lines = body.replace(/^\r?\n/, "").replace(/\r?\n$/, "").split(/\r?\n/);
+                const merged = [];
+                for (let i = 0; i < lines.length; i += 1) {
+                    const line = lines[i];
+                    if (/^\s*=+\s*$/.test(line) && i + 1 < lines.length) {
+                        merged.push(`${line.trim()} ${lines[i + 1].trimStart()}`);
+                        i += 1;
+                    } else {
+                        merged.push(line);
+                    }
+                }
+                return `$$\n${merged.join("\n")}\n$$`;
+            });
+        }
+        return escapePipesInTableMath(out);
+    }
+
+    // ── 表格内公式修复 ───────────────────────────────────────
+    // GFM 表格里 "|" 是列分隔符，因此公式中出现的 "|"（如 $P(A|B)$、$|x|$、范数、
+    // 集合记号）会把单元格和公式一起拆坏，导致公式无法渲染。这里把表格行中数学公式
+    // 内未转义的 "|" 转义为 "\|"。Lute 会在送入 KaTeX 前还原为 "|"，公式语义不变。
+    function escapeBarsInMathBody(body) {
+        return body.replace(/\\\||\|/g, (token) => (token === "|" ? "\\|" : token));
+    }
+
+    function escapeMathPipesInCell(text) {
+        const fix = (delimiter) => (match, body) => {
+            if (body.indexOf("|") === -1) return match; // 无需处理
+            // 仅当内容像公式时才处理，避免误伤如 "| $5 | $6 |" 这类货币单元格。
+            if (!/[A-Za-z\\^_{}=+()/]/.test(body)) return match;
+            return delimiter + escapeBarsInMathBody(body) + delimiter;
+        };
+        // 先处理单行块级 $$...$$，再处理行内 $...$
+        return text
+            .replace(/\$\$([^\n]+?)\$\$/g, fix("$$"))
+            .replace(/\$([^$\n]+?)\$/g, fix("$"));
+    }
+
+    function escapePipesInTableMath(md) {
+        if (!md || md.indexOf("|") === -1 || md.indexOf("$") === -1) return md;
+        const lines = md.split("\n");
+        const n = lines.length;
+        const isFence = (l) => /^\s*(```|~~~)/.test(l);
+        const isDelim = (l) =>
+            l.includes("|") &&
+            l.includes("-") &&
+            /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(l);
+        const inTable = new Array(n).fill(false);
+        let fenced = false;
+        for (let i = 0; i < n; i += 1) {
+            if (isFence(lines[i])) { fenced = !fenced; continue; }
+            if (fenced) continue;
+            if (isDelim(lines[i]) && i > 0 && lines[i - 1].includes("|") && !isDelim(lines[i - 1])) {
+                inTable[i - 1] = true; // 表头
+                inTable[i] = true;     // 分隔行（无公式，处理也无副作用）
+                for (let j = i + 1; j < n && lines[j].trim() !== "" && lines[j].includes("|"); j += 1) {
+                    if (isFence(lines[j])) break;
+                    inTable[j] = true;
                 }
             }
-            return `$$\n${out.join("\n")}\n$$`;
-        });
-    }
-
-    function isStandaloneDisplayMathPaste(text) {
-        if (!text) return false;
-        const trimmed = text.trim();
-        const markers = trimmed.match(/\$\$/g) || [];
-        return markers.length === 2 && trimmed.startsWith("$$") && trimmed.endsWith("$$");
-    }
-
-    function hasStandaloneMathEqualsLine(text) {
-        return /\$\$[\s\S]*?(?:^|\n)\s*=+\s*(?:\n|$)[\s\S]*?\$\$/m.test(text || "");
+        }
+        for (let i = 0; i < n; i += 1) {
+            if (inTable[i] && lines[i].includes("$")) lines[i] = escapeMathPipesInCell(lines[i]);
+        }
+        return lines.join("\n");
     }
 
     function setUnsavedStatus(message = "未保存 · 自动备份中...") {
@@ -224,7 +281,8 @@ $$
             const text = clipboard && clipboard.getData("text/plain");
             const html = clipboard && clipboard.getData("text/html");
             if (!text || html) return;
-            if (!isStandaloneDisplayMathPaste(text) || !hasStandaloneMathEqualsLine(text)) return;
+            // 仅当归一化确实改变了内容时才接管粘贴（修正 $$ 内的 Setext 误判、或表格内
+            // 公式的 "|"）；否则放行交给 Vditor 原生处理，避免影响普通粘贴。
             const normalized = normalizePastedMarkdown(text);
             if (normalized === text) return;
             event.preventDefault();
@@ -326,6 +384,7 @@ $$
                 onContentChange();
             },
             blur: () => {
+                fixTableMathInEditor();
                 persistToLocal();
             },
             select: () => {},
@@ -699,6 +758,7 @@ $$
     });
 
     async function actionSave() {
+        fixTableMathInEditor();
         const text = state.vditor.getValue();
 
         // —— Electron ——
@@ -762,6 +822,7 @@ $$
     }
 
     async function actionSaveAs() {
+        fixTableMathInEditor();
         if (ELECTRON) {
             try {
                 const target = await ELECTRON.saveDialog(state.filename || "未命名.md");
@@ -810,6 +871,7 @@ $$
     // 导出
     // =====================================================
     async function exportHTML() {
+        fixTableMathInEditor();
         const md = state.vditor.getValue();
         Vditor.md2html(md, {
             mode: "classic",
