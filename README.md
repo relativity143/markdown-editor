@@ -8,8 +8,8 @@
 
 | 芯片 | 推荐 (.dmg) | 便携 (.zip) |
 | --- | --- | --- |
-| **Apple Silicon** (M1 / M2 / M3 / M4) | [arm64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.3/Markdown.Editor-1.0.3-arm64.dmg) | [arm64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.3/Markdown.Editor-1.0.3-arm64-mac.zip) |
-| **Intel** | [x64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.3/Markdown.Editor-1.0.3.dmg) | [x64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.3/Markdown.Editor-1.0.3-mac.zip) |
+| **Apple Silicon** (M1 / M2 / M3 / M4) | [arm64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.4/Markdown.Editor-1.0.4-arm64.dmg) | [arm64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.4/Markdown.Editor-1.0.4-arm64-mac.zip) |
+| **Intel** | [x64 dmg](https://github.com/relativity143/markdown-editor/releases/download/v1.0.4/Markdown.Editor-1.0.4.dmg) | [x64 zip](https://github.com/relativity143/markdown-editor/releases/download/v1.0.4/Markdown.Editor-1.0.4-mac.zip) |
 
 > **首次启动若提示「无法验证开发者」**：右键 App → **打开** → 弹窗里点 **打开**；或终端执行 `xattr -dr com.apple.quarantine "/Applications/Markdown Editor.app"`。  
 > 本版本是 ad-hoc 自签名（未购买 Apple Developer 公证）。
