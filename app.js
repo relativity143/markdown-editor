@@ -520,6 +520,8 @@ $$
     // 文件树（仅 Electron 模式可用）
     // =====================================================
     const MD_RE = /\.(md|markdown|mdown|txt)$/i;
+    // 文件树仅展示的 Markdown 文件后缀（目录始终展示以便浏览）
+    const MD_DISPLAY_RE = /\.(md|markdown|mdown)$/i;
     const IMG_RE = /\.(png|jpg|jpeg|gif|webp|svg|bmp|ico)$/i;
 
     function fileIcon(item) {
@@ -572,6 +574,8 @@ $$
 
     function renderLevel(container, items, depth) {
         for (const item of items) {
+            // 仅显示目录与 Markdown 文件，其它类型隐藏
+            if (!item.isDirectory && !MD_DISPLAY_RE.test(item.name)) continue;
             const node = document.createElement("div");
             node.className = "tree-node";
             node.style.paddingLeft = `${4 + depth * 14}px`;
@@ -593,6 +597,24 @@ $$
             label.textContent = item.name;
             label.title = item.name;
             node.appendChild(label);
+
+            // md 文件：hover 时显示「在预览栏只读打开」按钮（不影响编辑器）
+            if (!item.isDirectory) {
+                const prevBtn = document.createElement("button");
+                prevBtn.className = "tree-preview-btn";
+                prevBtn.title = "在预览栏打开（只读）";
+                prevBtn.textContent = "👁";
+                prevBtn.addEventListener("click", async (e) => {
+                    e.stopPropagation();
+                    try {
+                        const content = await ELECTRON.readFile(item.path);
+                        openInPreview(item.path, content);
+                    } catch (err) {
+                        toast("预览失败：" + err.message);
+                    }
+                });
+                node.appendChild(prevBtn);
+            }
 
             node.addEventListener("click", (e) => {
                 e.stopPropagation();
@@ -1296,14 +1318,11 @@ ${body}
         if (!ELECTRON) return;
         // 原生菜单点击 → 复用 runAction
         ELECTRON.onMenuAction((action) => runAction(action));
-        // 双击 .md / 拖到 Dock：主进程会推送 file:opened
-        //   reason === "external" → 从别的应用再打开 → 只读侧边预览（不动当前文档）
-        //   其它（首次启动） → 载入编辑器
-        ELECTRON.onFileOpened(({ path: filePath, content, reason }) => {
-            const handle = () => {
-                if (reason === "external") openInPreview(filePath, content);
-                else applyOpenedFile(filePath, content);
-            };
+        // 双击 .md / 拖到 Dock / 从别的应用打开：主进程会推送 file:opened
+        // 一律在编辑器中打开并切换（主进程已负责把窗口带到前台）。
+        // 只读预览为手动触发：在文件树里点 md 文件行的 👁 按钮。
+        ELECTRON.onFileOpened(({ path: filePath, content }) => {
+            const handle = () => applyOpenedFile(filePath, content);
             if (!state.vditor) {
                 // 编辑器还没初始化好，缓一下
                 const wait = setInterval(() => {

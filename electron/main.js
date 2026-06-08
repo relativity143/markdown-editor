@@ -58,9 +58,9 @@ function pickFileFromArgs(argv) {
     return null;
 }
 
-// reason 区分文件来源：
-//   "initial"  应用首次启动时关联打开的文件 → 载入编辑器
-//   "external" 应用已在运行，从别的应用 / Finder 再打开的文件 → 只读预览栏
+// reason 标记文件来源（"initial" 首次启动 / "external" 运行期再打开）。
+// 渲染进程目前一律在编辑器中打开；该标记保留以便日后区分来源，
+// external 时主进程会额外把窗口带到前台。
 function queueOpenFile(filePath, reason = "external") {
     const normalized = normalizeFilePath(filePath);
     if (!normalized || !isSupportedDocument(normalized)) return;
