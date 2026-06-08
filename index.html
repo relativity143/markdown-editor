@@ -126,6 +126,18 @@
             <section class="editor-wrap">
                 <div id="editor"></div>
             </section>
+
+            <!-- 右侧只读预览栏（从别的应用打开文件时显示，不影响当前编辑文档） -->
+            <aside class="preview" id="preview">
+                <div class="preview-header">
+                    <span class="preview-title" id="preview-title" title="">预览</span>
+                    <div class="preview-actions">
+                        <button class="icon-btn small" id="preview-edit" title="在编辑器中打开此文件">✎</button>
+                        <button class="icon-btn small" id="preview-close" title="关闭预览">×</button>
+                    </div>
+                </div>
+                <div class="preview-body" id="preview-body"></div>
+            </aside>
         </main>
 
         <!-- 底部状态栏 -->

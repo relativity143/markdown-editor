@@ -17,6 +17,7 @@
     --statusbar-h: 26px;
     --outline-w: 220px;
     --files-w: 240px;
+    --preview-w: 420px;
     --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
     --font-mono: "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
     --font-serif: "Source Serif Pro", "Iowan Old Style", "Apple Garamond", "PingFang SC", "Microsoft YaHei", serif;
@@ -237,7 +238,7 @@ html.is-electron .logo { display: none; }
 /* ===== 主体区（三列：文件 | 大纲 | 编辑器） ===== */
 .main {
     display: grid;
-    grid-template-columns: var(--files-w) var(--outline-w) 1fr;
+    grid-template-columns: var(--files-w) var(--outline-w) 1fr 0;
     overflow: hidden;
     background: var(--bg);
 }
@@ -246,12 +247,19 @@ html.is-electron .logo { display: none; }
 .files       { grid-column: 1; min-width: 0; }
 .outline     { grid-column: 2; min-width: 0; }
 .editor-wrap { grid-column: 3; min-width: 0; }
+.preview     { grid-column: 4; min-width: 0; }
 
-.main.no-outline { grid-template-columns: var(--files-w) 0 1fr; }
+.main.no-outline { grid-template-columns: var(--files-w) 0 1fr 0; }
 .main.no-outline .outline { display: none; }
-.main.no-files { grid-template-columns: 0 var(--outline-w) 1fr; }
+.main.no-files { grid-template-columns: 0 var(--outline-w) 1fr 0; }
 .main.no-files .files { display: none; }
-.main.no-outline.no-files { grid-template-columns: 0 0 1fr; }
+.main.no-outline.no-files { grid-template-columns: 0 0 1fr 0; }
+
+/* 预览栏开启时，第 4 列分配宽度（与各侧栏隐藏状态组合） */
+.main.has-preview                      { grid-template-columns: var(--files-w) var(--outline-w) 1fr var(--preview-w); }
+.main.has-preview.no-outline           { grid-template-columns: var(--files-w) 0 1fr var(--preview-w); }
+.main.has-preview.no-files             { grid-template-columns: 0 var(--outline-w) 1fr var(--preview-w); }
+.main.has-preview.no-outline.no-files  { grid-template-columns: 0 0 1fr var(--preview-w); }
 
 /* ===== 文件树 ===== */
 .files {
@@ -416,6 +424,47 @@ html.is-electron .logo { display: none; }
 .outline-item.lv-4 { padding-left: 46px; font-size: 12px; }
 .outline-item.lv-5 { padding-left: 58px; font-size: 12px; color: var(--text-mute); }
 .outline-item.lv-6 { padding-left: 70px; font-size: 12px; color: var(--text-mute); }
+
+/* ===== 只读预览栏 ===== */
+.preview {
+    background: var(--bg-elev);
+    border-left: 1px solid var(--border);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+}
+.main.has-preview .preview { display: flex; }
+
+.preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 8px 8px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    flex-shrink: 0;
+}
+
+.preview-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.preview-actions { display: flex; gap: 2px; }
+
+.preview-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 24px 28px 48px;
+}
+/* Vditor 渲染出的内容容器宽度自适应预览栏 */
+.preview-body.vditor-reset { width: 100% !important; padding: 24px 28px 48px !important; }
 
 /* ===== 编辑器容器 ===== */
 .editor-wrap {
@@ -656,7 +705,9 @@ html.is-electron .logo { display: none; }
 
 /* ===== 响应式 ===== */
 @media (max-width: 900px) {
-    .main { grid-template-columns: 0 0 1fr !important; }
+    .main { grid-template-columns: 0 0 1fr 0 !important; }
+    /* 小屏空间有限：预览栏开启时占满，隐藏编辑区 */
+    .main.has-preview { grid-template-columns: 0 0 0 1fr !important; }
     .files, .outline { display: none; }
     .mode-switch { display: none; }
     .vditor-reset, .vditor-ir, .vditor-wysiwyg, .vditor-sv {

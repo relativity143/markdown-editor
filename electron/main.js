@@ -58,38 +58,48 @@ function pickFileFromArgs(argv) {
     return null;
 }
 
-function queueOpenFile(filePath) {
+// reason 区分文件来源：
+//   "initial"  应用首次启动时关联打开的文件 → 载入编辑器
+//   "external" 应用已在运行，从别的应用 / Finder 再打开的文件 → 只读预览栏
+function queueOpenFile(filePath, reason = "external") {
     const normalized = normalizeFilePath(filePath);
     if (!normalized || !isSupportedDocument(normalized)) return;
     if (!mainWindow || !rendererReady) {
-        pendingFilesToOpen.push(normalized);
+        pendingFilesToOpen.push({ path: normalized, reason });
         return;
     }
-    sendOpenFile(normalized);
+    sendOpenFile(normalized, reason);
 }
 
-// macOS：双击 .md 或 Dock 拖拽时
+// macOS：双击 .md 或 Dock 拖拽时。
+// 启动期（渲染进程还没就绪）的 open-file 视为首次打开 → 进编辑器；
+// 之后（应用已运行）再触发的视为外部打开 → 进只读预览栏，并把窗口带到前台。
 app.on("open-file", (event, filePath) => {
     event.preventDefault();
-    queueOpenFile(filePath);
+    const reason = rendererReady ? "external" : "initial";
+    if (reason === "external" && mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+    }
+    queueOpenFile(filePath, reason);
 });
 
-// 第二次启动（已有实例）时，把新文件丢给已有窗口
+// 第二次启动（已有实例）时，把新文件丢给已有窗口 → 外部打开 → 预览
 app.on("second-instance", (event, argv) => {
     const file = pickFileFromArgs(argv);
     if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.focus();
-        if (file) queueOpenFile(file);
+        if (file) queueOpenFile(file, "external");
     }
 });
 
-function sendOpenFile(filePath) {
+function sendOpenFile(filePath, reason = "external") {
     const normalized = normalizeFilePath(filePath);
     if (!mainWindow || !normalized) return;
     fs.readFile(normalized, "utf8")
         .then((content) => {
-            mainWindow.webContents.send("file:opened", { path: normalized, content });
+            mainWindow.webContents.send("file:opened", { path: normalized, content, reason });
         })
         .catch((err) => {
             dialog.showErrorBox("打开失败", err.message);
@@ -99,7 +109,7 @@ function sendOpenFile(filePath) {
 function flushPendingOpenFiles() {
     if (!mainWindow || !rendererReady) return;
     const files = pendingFilesToOpen.splice(0);
-    for (const filePath of files) sendOpenFile(filePath);
+    for (const item of files) sendOpenFile(item.path, item.reason);
 }
 
 // =====================================================
@@ -132,9 +142,9 @@ function createWindow() {
     mainWindow.once("ready-to-show", () => {
         mainWindow.show();
         if (isDev) mainWindow.webContents.openDevTools({ mode: "detach" });
-        // 推送启动时关联打开的文件
+        // 推送启动时关联打开的文件（首次启动 → 载入编辑器）
         const initial = pickFileFromArgs(process.argv);
-        if (initial) queueOpenFile(initial);
+        if (initial) queueOpenFile(initial, "initial");
         flushPendingOpenFiles();
     });
 

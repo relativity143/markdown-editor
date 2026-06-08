@@ -104,6 +104,8 @@ $$
         workspace: null,            // 当前挂载的根目录路径
         treeCache: new Map(),       // path -> entries
         treeExpanded: new Set(),    // 展开的目录路径
+        previewPath: null,          // 只读预览栏当前显示的文件路径
+        previewContent: null,       // 只读预览栏当前内容（用于主题切换时重渲染）
     };
 
     if (ELECTRON) document.documentElement.classList.add("is-electron");
@@ -122,6 +124,9 @@ $$
     const filesPanel = $("files");
     const filesBody = $("files-body");
     const filesTitle = $("files-title");
+    const previewPanel = $("preview");
+    const previewTitle = $("preview-title");
+    const previewBody = $("preview-body");
     const mainEl = document.querySelector(".main");
 
     // =====================================================
@@ -985,6 +990,10 @@ ${body}
                 );
             } catch (e) {}
         }
+        // 预览栏打开时，跟随主题重新渲染
+        if (mainEl.classList.contains("has-preview") && state.previewContent != null) {
+            renderPreview(state.previewContent);
+        }
     }
 
     function toggleTheme() {
@@ -1224,6 +1233,8 @@ ${body}
     $("btn-theme").addEventListener("click", toggleTheme);
     $("btn-outline").addEventListener("click", toggleOutline);
     $("btn-files").addEventListener("click", toggleFiles);
+    $("preview-close").addEventListener("click", closePreview);
+    $("preview-edit").addEventListener("click", promotePreviewToEditor);
     $("btn-mode-wysiwyg").addEventListener("click", () => setMode("wysiwyg"));
     $("btn-mode-ir").addEventListener("click", () => setMode("ir"));
     $("btn-mode-sv").addEventListener("click", () => setMode("sv"));
@@ -1286,17 +1297,23 @@ ${body}
         // 原生菜单点击 → 复用 runAction
         ELECTRON.onMenuAction((action) => runAction(action));
         // 双击 .md / 拖到 Dock：主进程会推送 file:opened
-        ELECTRON.onFileOpened(({ path: filePath, content }) => {
+        //   reason === "external" → 从别的应用再打开 → 只读侧边预览（不动当前文档）
+        //   其它（首次启动） → 载入编辑器
+        ELECTRON.onFileOpened(({ path: filePath, content, reason }) => {
+            const handle = () => {
+                if (reason === "external") openInPreview(filePath, content);
+                else applyOpenedFile(filePath, content);
+            };
             if (!state.vditor) {
                 // 编辑器还没初始化好，缓一下
                 const wait = setInterval(() => {
                     if (state.vditor) {
                         clearInterval(wait);
-                        applyOpenedFile(filePath, content);
+                        handle();
                     }
                 }, 80);
             } else {
-                applyOpenedFile(filePath, content);
+                handle();
             }
         });
         if (ELECTRON.ready) ELECTRON.ready();
@@ -1326,6 +1343,61 @@ ${body}
                 }
             } catch (_) {}
         }
+    }
+
+    // =====================================================
+    // 只读侧边预览栏
+    // =====================================================
+    function openInPreview(filePath, content) {
+        state.previewPath = filePath;
+        state.previewContent = content;
+        const name = String(filePath || "").split(/[\\/]/).pop() || "预览";
+        previewTitle.textContent = name;
+        previewTitle.title = filePath || "";
+        mainEl.classList.add("has-preview");
+        renderPreview(content);
+        toast(`预览 ${name}`);
+    }
+
+    function renderPreview(content) {
+        const dark = getCurrentTheme() === "dark";
+        if (typeof Vditor === "undefined" || typeof Vditor.preview !== "function") {
+            // 退化处理：Vditor 不可用时至少把原文显示出来
+            previewBody.textContent = content || "";
+            return;
+        }
+        Vditor.preview(previewBody, content || "", {
+            mode: dark ? "dark" : "light",
+            cdn: "https://cdn.jsdelivr.net/npm/vditor@3.10.4",
+            theme: { current: dark ? "dark" : "light" },
+            hljs: { enable: true, lineNumber: false, style: dark ? "github-dark" : "github" },
+            math: { engine: "KaTeX", inlineDigit: true },
+            markdown: {
+                autoSpace: true,
+                fixTermTypo: false,
+                toc: false,
+                mark: true,
+                footnotes: true,
+                listStyle: true,
+                sanitize: true,
+            },
+        });
+    }
+
+    function closePreview() {
+        mainEl.classList.remove("has-preview");
+        state.previewPath = null;
+        state.previewContent = null;
+        previewBody.innerHTML = "";
+    }
+
+    // 把预览中的文件提升到编辑器中打开（按预览头部的 ✎ 按钮）
+    function promotePreviewToEditor() {
+        if (!state.previewPath) return;
+        const p = state.previewPath;
+        const c = state.previewContent ?? "";
+        closePreview();
+        applyOpenedFile(p, c);
     }
 
     // =====================================================
