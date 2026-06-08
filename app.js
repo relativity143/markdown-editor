@@ -93,6 +93,7 @@ $$
     // ---------- 状态 ----------
     const state = {
         vditor: null,
+        editorReady: false,         // Vditor 内部 after 回调触发后才为 true（setValue 才生效）
         filename: localStorage.getItem(LS_KEYS.filename) || "未命名.md",
         filePath: null,   // Electron：完整文件路径
         fileHandle: null, // Web：File System Access API handle
@@ -307,6 +308,7 @@ $$
         const onReady = options.onReady;
 
         suppressChangeTracking();
+        state.editorReady = false;
 
         state.vditor = new Vditor("editor", {
             height: "100%",
@@ -368,6 +370,7 @@ $$
             ],
             counter: { enable: true, type: "markdown" },
             after: () => {
+                state.editorReady = true;
                 applyTheme(getCurrentTheme());
                 const currentMode = state.vditor.getCurrentMode();
                 statMode.textContent = modeLabel(currentMode);
@@ -1323,14 +1326,15 @@ ${body}
         // 只读预览为手动触发：在文件树里点 md 文件行的 👁 按钮。
         ELECTRON.onFileOpened(({ path: filePath, content }) => {
             const handle = () => applyOpenedFile(filePath, content);
-            if (!state.vditor) {
-                // 编辑器还没初始化好，缓一下
+            // 必须等 Vditor 真正就绪（after 回调）后再 setValue，否则冷启动时
+            // 文件内容会被构造时的初始内容（localStorage 恢复值）覆盖。
+            if (!state.editorReady) {
                 const wait = setInterval(() => {
-                    if (state.vditor) {
+                    if (state.editorReady) {
                         clearInterval(wait);
                         handle();
                     }
-                }, 80);
+                }, 60);
             } else {
                 handle();
             }
