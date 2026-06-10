@@ -228,16 +228,23 @@ $$
     // GFM 表格里 "|" 是列分隔符，因此公式中出现的 "|"（如 $P(A|B)$、$|x|$、范数、
     // 集合记号）会把单元格和公式一起拆坏，导致公式无法渲染。这里把表格行中数学公式
     // 内未转义的 "|" 转义为 "\|"。Lute 会在送入 KaTeX 前还原为 "|"，公式语义不变。
+    //
+    // 注意：「\|」只是编辑器内部的工作格式。保存 / 写盘时会经
+    // unescapePipesInTableMath 还原成用户输入的「|」，避免污染文件
+    // （否则其它编辑器里 KaTeX 会把 \| 渲染成范数符号 ‖）。
     function escapeBarsInMathBody(body) {
         return body.replace(/\\\||\|/g, (token) => (token === "|" ? "\\|" : token));
     }
 
-    function escapeMathPipesInCell(text) {
+    function unescapeBarsInMathBody(body) {
+        // 仅把「\|」还原为「|」；优先吃掉「\\」以免误拆 LaTeX 换行等双反斜杠序列
+        return body.replace(/\\\\|\\\|/g, (token) => (token === "\\|" ? "|" : token));
+    }
+
+    function mapMathInCell(text, mapBody, shouldTouch) {
         const fix = (delimiter) => (match, body) => {
-            if (body.indexOf("|") === -1) return match; // 无需处理
-            // 仅当内容像公式时才处理，避免误伤如 "| $5 | $6 |" 这类货币单元格。
-            if (!/[A-Za-z\\^_{}=+()/]/.test(body)) return match;
-            return delimiter + escapeBarsInMathBody(body) + delimiter;
+            if (!shouldTouch(body)) return match;
+            return delimiter + mapBody(body) + delimiter;
         };
         // 先处理单行块级 $$...$$，再处理行内 $...$
         return text
@@ -245,7 +252,19 @@ $$
             .replace(/\$([^$\n]+?)\$/g, fix("$"));
     }
 
-    function escapePipesInTableMath(md) {
+    function escapeMathPipesInCell(text) {
+        return mapMathInCell(text, escapeBarsInMathBody, (body) => {
+            if (body.indexOf("|") === -1) return false; // 无需处理
+            // 仅当内容像公式时才处理，避免误伤如 "| $5 | $6 |" 这类货币单元格。
+            return /[A-Za-z\\^_{}=+()/]/.test(body);
+        });
+    }
+
+    function unescapeMathPipesInCell(text) {
+        return mapMathInCell(text, unescapeBarsInMathBody, (body) => body.indexOf("\\|") !== -1);
+    }
+
+    function mapTableMathLines(md, mapLine) {
         if (!md || md.indexOf("|") === -1 || md.indexOf("$") === -1) return md;
         const lines = md.split("\n");
         const n = lines.length;
@@ -269,9 +288,18 @@ $$
             }
         }
         for (let i = 0; i < n; i += 1) {
-            if (inTable[i] && lines[i].includes("$")) lines[i] = escapeMathPipesInCell(lines[i]);
+            if (inTable[i] && lines[i].includes("$")) lines[i] = mapLine(lines[i]);
         }
         return lines.join("\n");
+    }
+
+    function escapePipesInTableMath(md) {
+        return mapTableMathLines(md, escapeMathPipesInCell);
+    }
+
+    // 落盘前还原：表格公式里的「\|」→「|」，保持文件与用户输入一致
+    function unescapePipesInTableMath(md) {
+        return mapTableMathLines(md, unescapeMathPipesInCell);
     }
 
     function setUnsavedStatus(message = "未保存 · 自动备份中...") {
@@ -789,7 +817,8 @@ $$
 
     async function actionSave() {
         fixTableMathInEditor();
-        const text = state.vditor.getValue();
+        // 写盘内容还原编辑器内部的「\|」工作格式，保持文件与用户输入一致
+        const text = unescapePipesInTableMath(state.vditor.getValue());
 
         // —— Electron ——
         if (ELECTRON) {
@@ -857,7 +886,7 @@ $$
             try {
                 const target = await ELECTRON.saveDialog(state.filename || "未命名.md");
                 if (!target) return;
-                await ELECTRON.writeFile(target, state.vditor.getValue());
+                await ELECTRON.writeFile(target, unescapePipesInTableMath(state.vditor.getValue()));
                 state.filePath = target;
                 state.filename = target.split(/[\\/]/).pop();
                 markSaved();
