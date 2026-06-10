@@ -180,7 +180,7 @@ $$
     function setEditorContent(content) {
         if (!state.vditor) return;
         suppressChangeTracking();
-        state.vditor.setValue(escapePipesInTableMath(content));
+        state.vditor.setValue(escapePipesInTableMath(convertLatexDelimiters(content)));
         updateCounter();
         updateOutline();
         resumeChangeTracking();
@@ -200,9 +200,66 @@ $$
         updateOutline();
     }
 
+    // ── LaTeX 定界符归一化 ──────────────────────────────────
+    // ChatGPT 等工具导出的 Markdown 常用 \[...\]（块级）/ \(...\)（行内）作公式
+    // 定界符，Vditor/Lute 只识别 $$...$$ / $...$，导致公式不渲染、反斜杠被
+    // Markdown 转义吃掉、公式内 "=" 行被误判为 Setext 标题。载入 / 粘贴 / 预览
+    // 时统一转换。跳过代码围栏与行内代码；\\[（LaTeX 换行间距如 \\[2pt]）不受影响。
+    function looksLikeMath(body) {
+        // 避免把 Markdown 的转义括号（如 \[link\]）误判为公式
+        return /[\\^_=+<>{}]|\d/.test(body);
+    }
+
+    function convertLatexDelimitersInSegment(text) {
+        let out = text;
+        // 块级：\[ 与 \] 各占一行（LLM 导出的典型格式），无条件转换
+        out = out.replace(/^[ \t]*\\\[[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\\\][ \t]*$/gm,
+            (_m, body) => `$$\n${body}\n$$`);
+        // 块级：同行 \[...\]，要求内容像公式
+        out = out.replace(/(^|[^\\])\\\[([^\n]*?[^\\])\\\]/g, (m, pre, body) =>
+            looksLikeMath(body) ? `${pre}$$${body.trim()}$$` : m);
+        // 行内：\(...\)，要求内容像公式
+        out = out.replace(/(^|[^\\])\\\(([^\n]*?[^\\]|)\\\)/g, (m, pre, body) =>
+            looksLikeMath(body) ? `${pre}$${body.trim()}$` : m);
+        return out;
+    }
+
+    function convertLatexDelimiters(md) {
+        if (!md || (md.indexOf("\\[") === -1 && md.indexOf("\\(") === -1)) return md;
+        const lines = md.split("\n");
+        const out = [];
+        let plain = [];
+        let fenced = false;
+        const flushPlain = () => {
+            if (!plain.length) return;
+            const seg = plain.join("\n");
+            // 行内代码保护
+            const stash = [];
+            let t = seg.replace(/`[^`\n]*`/g, (m) => {
+                stash.push(m);
+                return "\u0000" + (stash.length - 1) + "\u0000";
+            });
+            t = convertLatexDelimitersInSegment(t);
+            out.push(t.replace(/\u0000(\d+)\u0000/g, (_m, i) => stash[+i]));
+            plain = [];
+        };
+        for (const line of lines) {
+            if (/^\s*(```|~~~)/.test(line)) {
+                if (!fenced) flushPlain();
+                fenced = !fenced;
+                out.push(line);
+                continue;
+            }
+            if (fenced) out.push(line);
+            else plain.push(line);
+        }
+        flushPlain();
+        return out.join("\n");
+    }
+
     function normalizePastedMarkdown(text) {
         if (!text) return text;
-        let out = text;
+        let out = convertLatexDelimiters(text);
         if (out.includes("$$")) {
             // In WYSIWYG paste, a standalone "=" inside $$...$$ can be parsed as a Setext H1 underline.
             // Merge it with the following formula line so it remains LaTeX, not a Markdown heading.
@@ -329,9 +386,11 @@ $$
     }
 
     function initEditor(options = {}) {
-        const initialContent = Object.prototype.hasOwnProperty.call(options, "content")
-            ? options.content
-            : getInitialContent();
+        const initialContent = escapePipesInTableMath(convertLatexDelimiters(
+            Object.prototype.hasOwnProperty.call(options, "content")
+                ? options.content
+                : getInitialContent()
+        ));
         const initialMode = options.mode || localStorage.getItem(LS_KEYS.mode) || "wysiwyg";
         const onReady = options.onReady;
 
@@ -1418,7 +1477,7 @@ ${body}
             previewBody.textContent = content || "";
             return;
         }
-        Vditor.preview(previewBody, content || "", {
+        Vditor.preview(previewBody, escapePipesInTableMath(convertLatexDelimiters(content || "")), {
             mode: dark ? "dark" : "light",
             cdn: "https://cdn.jsdelivr.net/npm/vditor@3.10.4",
             theme: { current: dark ? "dark" : "light" },
