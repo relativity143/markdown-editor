@@ -363,6 +363,13 @@ $$
         statSaved.textContent = message;
     }
 
+    // 文本是否含数学公式。块级 $$...$$ 直接算；行内 $...$ 要求内部含真正的数学
+    // 信号符（\ ^ _ { } =），避免把「$5 到 $6」这类货币误判为公式。
+    function containsMath(text) {
+        return /\$\$[\s\S]*?\$\$/.test(text) ||
+            /(^|[^\\$])\$[^$\n]*[\\^_{}=][^$\n]*\$/.test(text);
+    }
+
     function setupPasteGuard() {
         document.addEventListener("paste", (event) => {
             if (!state.vditor || getCurrentModeSafe() !== "wysiwyg") return;
@@ -371,11 +378,17 @@ $$
             const clipboard = event.clipboardData;
             const text = clipboard && clipboard.getData("text/plain");
             const html = clipboard && clipboard.getData("text/html");
-            if (!text || html) return;
-            // 仅当归一化确实改变了内容时才接管粘贴（修正 $$ 内的 Setext 误判、或表格内
-            // 公式的 "|"）；否则放行交给 Vditor 原生处理，避免影响普通粘贴。
+            if (!text) return;
             const normalized = normalizePastedMarkdown(text);
-            if (normalized === text) return;
+            // 含公式的纯文本：必须接管。Vditor 原生粘贴会把 $ 当普通字符转义成 \$，
+            // 改用 insertValue 按 Markdown 解析，公式才能正确渲染。
+            const mathy = containsMath(normalized);
+            if (!mathy) {
+                // 富文本（带 HTML）且无公式：交给 Vditor 原生处理；
+                // 纯文本且归一化未改写：同样放行，避免影响普通粘贴。
+                if (html) return;
+                if (normalized === text) return;
+            }
             event.preventDefault();
             event.stopPropagation();
             event.stopImmediatePropagation();
