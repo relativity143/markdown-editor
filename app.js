@@ -370,6 +370,25 @@ $$
             /(^|[^\\$])\$[^$\n]*[\\^_{}=][^$\n]*\$/.test(text);
     }
 
+    // 光标是否落在表格单元格内（表格单元格是行内/单行上下文，放不下块级 $$ 公式）
+    function caretInTableCell() {
+        const sel = window.getSelection && window.getSelection();
+        if (!sel || !sel.anchorNode) return false;
+        const root = document.getElementById("editor");
+        let el = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+        while (el && el !== root) {
+            if (el.tagName === "TD" || el.tagName === "TH" || el.tagName === "TABLE") return true;
+            el = el.parentElement;
+        }
+        return false;
+    }
+
+    // 把块级 $$...$$ 压成单行行内 $...$（用于粘进表格单元格时）
+    function blockMathToInline(text) {
+        return text.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, (_m, body) =>
+            `$${body.replace(/\s*\n\s*/g, " ").trim()}$`);
+    }
+
     function setupPasteGuard() {
         document.addEventListener("paste", (event) => {
             if (!state.vditor || getCurrentModeSafe() !== "wysiwyg") return;
@@ -389,11 +408,13 @@ $$
                 if (html) return;
                 if (normalized === text) return;
             }
+            // 表格单元格放不下块级公式，压成行内 $...$，否则 Vditor 会整体转义
+            const toInsert = caretInTableCell() ? blockMathToInline(normalized) : normalized;
             event.preventDefault();
             event.stopPropagation();
             event.stopImmediatePropagation();
             setTimeout(() => {
-                if (state.vditor) state.vditor.insertValue(normalized);
+                if (state.vditor) state.vditor.insertValue(toInsert);
             }, 0);
         }, true);
     }
