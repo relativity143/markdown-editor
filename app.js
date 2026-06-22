@@ -205,9 +205,10 @@ $$
     // 定界符，Vditor/Lute 只识别 $$...$$ / $...$，导致公式不渲染、反斜杠被
     // Markdown 转义吃掉、公式内 "=" 行被误判为 Setext 标题。载入 / 粘贴 / 预览
     // 时统一转换。跳过代码围栏与行内代码；\\[（LaTeX 换行间距如 \\[2pt]）不受影响。
+    // 同行 \[...\] 是否像公式。[ 是 Markdown 链接语法，\[文字1\] 这类转义括号很常见，
+    // 因此要求含真正的数学信号符（\ ^ _ { } =），仅有数字不足以判定。
     function looksLikeMath(body) {
-        // 避免把 Markdown 的转义括号（如 \[link\]）误判为公式
-        return /[\\^_=+<>{}]|\d/.test(body);
+        return /[\\^_{}=]/.test(body);
     }
 
     function convertLatexDelimitersInSegment(text) {
@@ -215,12 +216,13 @@ $$
         // 块级：\[ 与 \] 各占一行（LLM 导出的典型格式），无条件转换
         out = out.replace(/^[ \t]*\\\[[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\\\][ \t]*$/gm,
             (_m, body) => `$$\n${body}\n$$`);
-        // 块级：同行 \[...\]，要求内容像公式
+        // 块级：同行 \[...\]，要求内容像公式（[ 是 Markdown 链接语法，需防误转 \[文字\]）
         out = out.replace(/(^|[^\\])\\\[([^\n]*?[^\\])\\\]/g, (m, pre, body) =>
             looksLikeMath(body) ? `${pre}$$${body.trim()}$$` : m);
-        // 行内：\(...\)，要求内容像公式
-        out = out.replace(/(^|[^\\])\\\(([^\n]*?[^\\]|)\\\)/g, (m, pre, body) =>
-            looksLikeMath(body) ? `${pre}$${body.trim()}$` : m);
+        // 行内：\(...\) —— 圆括号不是 Markdown 语法，\( 几乎只用于公式，无条件转换
+        // （含 \(q\)、\(R\) 这类单字母变量）
+        out = out.replace(/(^|[^\\])\\\(([^\n]*?[^\\]|)\\\)/g, (_m, pre, body) =>
+            `${pre}$${body.trim()}$`);
         return out;
     }
 
@@ -389,6 +391,13 @@ $$
             `$${body.replace(/\s*\n\s*/g, " ").trim()}$`);
     }
 
+    // 文本是否包含 GFM 表格（用对齐分隔行 |---|---| 判定）
+    function hasTableDelimiterRow(text) {
+        return text.split("\n").some((l) =>
+            l.includes("|") && l.includes("-") &&
+            /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(l));
+    }
+
     function setupPasteGuard() {
         document.addEventListener("paste", (event) => {
             if (!state.vditor || getCurrentModeSafe() !== "wysiwyg") return;
@@ -398,6 +407,11 @@ $$
             const text = clipboard && clipboard.getData("text/plain");
             const html = clipboard && clipboard.getData("text/html");
             if (!text) return;
+            // 含表格的粘贴一律交给 Vditor 原生处理，绝不走 insertValue：后者把 Markdown
+            // 转 HTML 插入 contenteditable 时，单元格公式里的 "<"（如 r<R）会被当成 HTML
+            // 标签开头，吞掉后续内容造成丢行 / 公式损坏。表格里的 \(\)\[\] 公式可在保存后
+            // 重新打开时由文件加载路径（setValue，对 < 安全）正确渲染。
+            if (hasTableDelimiterRow(text)) return;
             const normalized = normalizePastedMarkdown(text);
             // 含公式的纯文本：必须接管。Vditor 原生粘贴会把 $ 当普通字符转义成 \$，
             // 改用 insertValue 按 Markdown 解析，公式才能正确渲染。
