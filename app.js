@@ -211,23 +211,47 @@ $$
         return /[\\^_{}=]/.test(body);
     }
 
+    // 公式内的裸 < > 换成 KaTeX 等价的 \lt \gt。WYSIWYG 是基于 contenteditable 的
+    // HTML 编辑器，公式里的 "<"（如 r<R、R_H<0）会被浏览器当成 HTML 标签开头，吞掉
+    // 后续内容 → 粘贴 / 模式切换时丢行、公式损坏。\lt \gt 渲染完全等价且不含危险字符。
+    // 把公式体内的裸 < > 换成 KaTeX 等价的 \lt \gt
+    function fixAngles(b) {
+        return b.replace(/</g, "\\lt ").replace(/>/g, "\\gt ");
+    }
+
+    function replaceAnglesInMath(text) {
+        if (text.indexOf("$") === -1 || !/[<>]/.test(text)) return text;
+        // 块级 $$...$$：含尖括号即处理（块级一定是公式）
+        let out = text.replace(/\$\$([\s\S]*?)\$\$/g, (m, b) =>
+            /[<>]/.test(b) ? `$$${fixAngles(b)}$$` : m);
+        // 行内 $...$：要求含尖括号且含数学信号符，避免误伤「$5 < $10」这类货币正文
+        out = out.replace(/(^|[^\\$])\$(?!\$)([^$\n]*?)\$(?!\$)/g, (m, pre, b) =>
+            (/[<>]/.test(b) && /[\\^_{}=]/.test(b)) ? `${pre}$${fixAngles(b)}$` : m);
+        return out;
+    }
+
     function convertLatexDelimitersInSegment(text) {
         let out = text;
         // 块级：\[ 与 \] 各占一行（LLM 导出的典型格式），无条件转换
         out = out.replace(/^[ \t]*\\\[[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\\\][ \t]*$/gm,
-            (_m, body) => `$$\n${body}\n$$`);
+            (_m, body) => `$$\n${fixAngles(body)}\n$$`);
         // 块级：同行 \[...\]，要求内容像公式（[ 是 Markdown 链接语法，需防误转 \[文字\]）
         out = out.replace(/(^|[^\\])\\\[([^\n]*?[^\\])\\\]/g, (m, pre, body) =>
-            looksLikeMath(body) ? `${pre}$$${body.trim()}$$` : m);
+            looksLikeMath(body) ? `${pre}$$${fixAngles(body.trim())}$$` : m);
         // 行内：\(...\) —— 圆括号不是 Markdown 语法，\( 几乎只用于公式，无条件转换
-        // （含 \(q\)、\(R\) 这类单字母变量）
+        // （含 \(q\)、\(R\) 这类单字母变量；已知是公式，尖括号无条件保护）
         out = out.replace(/(^|[^\\])\\\(([^\n]*?[^\\]|)\\\)/g, (_m, pre, body) =>
-            `${pre}$${body.trim()}$`);
-        return out;
+            `${pre}$${fixAngles(body.trim())}$`);
+        // 兜底：处理本就用 $ 定界、未经上面转换的公式里的尖括号
+        return replaceAnglesInMath(out);
     }
 
     function convertLatexDelimiters(md) {
-        if (!md || (md.indexOf("\\[") === -1 && md.indexOf("\\(") === -1)) return md;
+        if (!md) return md;
+        // 需要处理的两种情况：① 含 \[ \( 定界符；② 含 $ 公式且内部有尖括号需保护
+        const hasLatexDelim = md.indexOf("\\[") !== -1 || md.indexOf("\\(") !== -1;
+        const hasMathAngle = md.indexOf("$") !== -1 && /[<>]/.test(md);
+        if (!hasLatexDelim && !hasMathAngle) return md;
         const lines = md.split("\n");
         const out = [];
         let plain = [];
