@@ -23,6 +23,7 @@
         showFiles: "mde:files",
         workspace: "mde:workspace",
         extImages: "mde:extImages",
+        filePath: "mde:filepath",
     };
 
     const DEFAULT_CONTENT = `# 欢迎使用 Markdown Editor
@@ -96,7 +97,7 @@ $$
         vditor: null,
         editorReady: false,         // Vditor 内部 after 回调触发后才为 true（setValue 才生效）
         filename: localStorage.getItem(LS_KEYS.filename) || "未命名.md",
-        filePath: null,   // Electron：完整文件路径
+        filePath: (typeof window !== "undefined" && window.electronAPI && localStorage.getItem("mde:filepath")) || null,   // Electron：完整文件路径（跨会话恢复）
         fileHandle: null, // Web：File System Access API handle
         dirty: false,
         saveTimer: null,
@@ -742,6 +743,8 @@ $$
             const md = getEditorContent();
             localStorage.setItem(LS_KEYS.content, md);
             localStorage.setItem(LS_KEYS.filename, state.filename);
+            if (state.filePath) localStorage.setItem(LS_KEYS.filePath, state.filePath);
+            else localStorage.removeItem(LS_KEYS.filePath);
             if (state.dirty) {
                 setUnsavedStatus(`未保存 · 已自动备份 ${formatTime()}`);
             }
@@ -1738,6 +1741,8 @@ ${body}
             statSaved.textContent = "无法加载 Vditor";
             return;
         }
+        // 跨会话恢复的文档：渲染前设好图片基准目录，否则相对路径图片冷启动时裂图
+        if (state.filePath) setImageBase(state.filePath.replace(/[\\/][^\\/]*$/, ""));
         initEditor();
     });
 })();
