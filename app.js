@@ -634,7 +634,7 @@ $$
         // 只剔除文件系统不安全字符与空白，保留中文等 Unicode 文字
         let base = String(orig || "image")
             .replace(/\.[^.]+$/, "")
-            .replace(/[\/\\:*?"<>| -]+/g, "_")
+            .replace(/[\/\\:*?"<>|-]+/g, "_")
             .replace(/\s+/g, "_")
             .replace(/^[._]+|[._]+$/g, "")
             .slice(0, 40);
@@ -958,6 +958,7 @@ $$
         if (state.dirty && !confirm("当前文档未保存，是否丢弃并打开新文件？")) return;
         try {
             const content = await ELECTRON.readFile(item.path);
+            setImageBase(item.path.replace(/[\\/][^\\/]*$/, "")); // 渲染前设好图片基准目录
             setEditorContent(content);
             state.filePath = item.path;
             state.filename = item.name;
@@ -1027,6 +1028,7 @@ $$
             try {
                 const res = await ELECTRON.openDialog();
                 if (!res) return;
+                setImageBase(res.path.replace(/[\\/][^\\/]*$/, "")); // 渲染前设好图片基准目录
                 setEditorContent(res.content);
                 state.filePath = res.path;
                 state.filename = res.path.split(/[\\/]/).pop();
