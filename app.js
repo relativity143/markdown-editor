@@ -576,8 +576,22 @@ $$
     // =====================================================
     let imageNameSeq = 0;
 
+    // 「图片存为独立文件」按文件单独记忆（localStorage 里存 路径→true 的映射），
+    // 不影响其它文件，也不改正文内容。未保存的文档没有路径，恒为关（仍用 base64）。
+    function extFilesMap() {
+        try { return JSON.parse(localStorage.getItem(LS_KEYS.extImages) || "{}") || {}; }
+        catch (_) { return {}; }
+    }
+
     function externalImagesEnabled() {
-        return localStorage.getItem(LS_KEYS.extImages) === "1";
+        return !!(state.filePath && extFilesMap()[state.filePath]);
+    }
+
+    function setExternalImagesForFile(filePath, on) {
+        if (!filePath) return;
+        const map = extFilesMap();
+        if (on) map[filePath] = true; else delete map[filePath];
+        localStorage.setItem(LS_KEYS.extImages, JSON.stringify(map));
     }
 
     // 让编辑器里相对路径图片（assets/xxx.png）相对「当前文档所在目录」解析，
@@ -647,9 +661,10 @@ $$
     }
 
     function toggleExternalImages() {
+        if (!state.filePath) return toast("请先保存文档，再为该文件开启「图片存为独立文件」");
         const on = !externalImagesEnabled();
-        localStorage.setItem(LS_KEYS.extImages, on ? "1" : "0");
-        toast(`图片存为独立文件：${on ? "开" : "关"}` + (on && !state.filePath ? "（未保存的文档仍用内联，存盘后生效）" : ""));
+        setExternalImagesForFile(state.filePath, on);
+        toast(`本文件「图片存为独立文件」：${on ? "开（之后插入的图自动存到 assets/）" : "关"}`);
     }
 
     // 瘦身：把当前文档里的内联 base64 图片导出为 assets/ 文件，原文件先备份
@@ -664,8 +679,9 @@ $$
         if (!hits.length) return toast("当前文档没有内联图片");
         try {
             const dir = await ELECTRON.dirname(state.filePath);
-            const bak = `${state.filePath}.bak-${Date.now()}`;
-            await ELECTRON.copyFile(state.filePath, bak);
+            // 固定名备份，已存在则保留（始终是最初的原始备份，不覆盖、不堆积）
+            const bak = `${state.filePath}.bak`;
+            const bk = await ELECTRON.copyFile(state.filePath, bak, true);
             let out = content;
             let count = 0;
             for (const h of hits) {
@@ -679,7 +695,12 @@ $$
             state.vditor.setValue(out);
             resumeChangeTracking();
             await actionSave();
-            toast(`已导出 ${count} 张图片到 assets/，原文件已备份为 ${bak.split(/[\\/]/).pop()}`);
+            // 瘦身后自动为本文件开启外置，之后新增图片直接落地，无需再转
+            setExternalImagesForFile(state.filePath, true);
+            const bakNote = bk && bk.existed
+                ? "（原始备份 .bak 已存在，保留不覆盖）"
+                : `，原文件已备份为 ${bak.split(/[\\/]/).pop()}`;
+            toast(`已导出 ${count} 张图片到 assets/${bakNote}；已为本文件开启自动外置`);
         } catch (e) {
             toast("导出失败：" + e.message);
         }

@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     readFile: (p) => ipcRenderer.invoke("fs:read", p),
     writeFile: (p, content) => ipcRenderer.invoke("fs:write", p, content),
     writeImage: (dir, filename, base64) => ipcRenderer.invoke("fs:write-image", dir, filename, base64),
-    copyFile: (src, dest) => ipcRenderer.invoke("fs:copy", src, dest),
+    copyFile: (src, dest, exclusive) => ipcRenderer.invoke("fs:copy", src, dest, exclusive),
     basename: (p) => ipcRenderer.invoke("fs:basename", p),
     dirname: (p) => ipcRenderer.invoke("fs:dirname", p),
     listDir: (p) => ipcRenderer.invoke("fs:list-dir", p),

@@ -10,6 +10,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme } = require("electron");
 const path = require("path");
 const fs = require("fs/promises");
+const fsConstants = require("fs").constants;
 const { fileURLToPath } = require("url");
 
 const isMac = process.platform === "darwin";
@@ -285,7 +286,7 @@ function buildMenu() {
                 { label: "切换深色 / 浅色", accelerator: "CmdOrCtrl+Shift+L", click: () => send("menu:action", "toggle-theme") },
                 { label: "打字机模式", click: () => send("menu:action", "toggle-typewriter") },
                 { type: "separator" },
-                { label: "图片存为独立文件（开关）", click: () => send("menu:action", "toggle-ext-images") },
+                { label: "本文件图片存为独立文件（开关）", click: () => send("menu:action", "toggle-ext-images") },
                 { label: "内联图片导出为文件...", click: () => send("menu:action", "export-inline-images") },
                 { type: "separator" },
                 { role: "reload", label: "重新加载" },
@@ -427,10 +428,16 @@ ipcMain.handle("fs:write-image", async (_e, dirPath, filename, base64) => {
     return "assets/" + filename;
 });
 
-// 复制文件（用于瘦身前备份原文件）
-ipcMain.handle("fs:copy", async (_e, src, dest) => {
-    await fs.copyFile(src, dest);
-    return true;
+// 复制文件（用于瘦身前备份原文件）。exclusive=true 时若目标已存在则不覆盖、
+// 返回 { copied:false, existed:true }，以保留最初的原始备份、避免堆积。
+ipcMain.handle("fs:copy", async (_e, src, dest, exclusive) => {
+    try {
+        await fs.copyFile(src, dest, exclusive ? fsConstants.COPYFILE_EXCL : 0);
+        return { copied: true };
+    } catch (e) {
+        if (exclusive && e.code === "EEXIST") return { copied: false, existed: true };
+        throw e;
+    }
 });
 
 ipcMain.handle("fs:basename", async (_e, p) => path.basename(p));
