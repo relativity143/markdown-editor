@@ -285,6 +285,9 @@ function buildMenu() {
                 { label: "切换深色 / 浅色", accelerator: "CmdOrCtrl+Shift+L", click: () => send("menu:action", "toggle-theme") },
                 { label: "打字机模式", click: () => send("menu:action", "toggle-typewriter") },
                 { type: "separator" },
+                { label: "图片存为独立文件（开关）", click: () => send("menu:action", "toggle-ext-images") },
+                { label: "内联图片导出为文件...", click: () => send("menu:action", "export-inline-images") },
+                { type: "separator" },
                 { role: "reload", label: "重新加载" },
                 { role: "toggleDevTools", label: "开发者工具" },
                 { type: "separator" },
@@ -413,6 +416,20 @@ ipcMain.handle("fs:read", async (_e, filePath) => {
 
 ipcMain.handle("fs:write", async (_e, filePath, content) => {
     await fs.writeFile(filePath, content, "utf8");
+    return true;
+});
+
+// 把 base64 图片写入 <dir>/assets/，返回相对链接 assets/<filename>
+ipcMain.handle("fs:write-image", async (_e, dirPath, filename, base64) => {
+    const assetsDir = path.join(dirPath, "assets");
+    await fs.mkdir(assetsDir, { recursive: true });
+    await fs.writeFile(path.join(assetsDir, filename), Buffer.from(base64, "base64"));
+    return "assets/" + filename;
+});
+
+// 复制文件（用于瘦身前备份原文件）
+ipcMain.handle("fs:copy", async (_e, src, dest) => {
+    await fs.copyFile(src, dest);
     return true;
 });
 

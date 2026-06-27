@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     openFolderDialog: () => ipcRenderer.invoke("dialog:open-folder"),
     readFile: (p) => ipcRenderer.invoke("fs:read", p),
     writeFile: (p, content) => ipcRenderer.invoke("fs:write", p, content),
+    writeImage: (dir, filename, base64) => ipcRenderer.invoke("fs:write-image", dir, filename, base64),
+    copyFile: (src, dest) => ipcRenderer.invoke("fs:copy", src, dest),
     basename: (p) => ipcRenderer.invoke("fs:basename", p),
     dirname: (p) => ipcRenderer.invoke("fs:dirname", p),
     listDir: (p) => ipcRenderer.invoke("fs:list-dir", p),

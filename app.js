@@ -22,6 +22,7 @@
         showOutline: "mde:outline",
         showFiles: "mde:files",
         workspace: "mde:workspace",
+        extImages: "mde:extImages",
     };
 
     const DEFAULT_CONTENT = `# 欢迎使用 Markdown Editor
@@ -557,21 +558,131 @@ $$
             select: () => {},
             upload: {
                 accept: "image/*",
-                handler: (files) => {
-                    if (!files || !files.length) return;
-                    return new Promise((resolve) => {
-                        const f = files[0];
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                            const md = `![${f.name}](${reader.result})`;
-                            state.vditor.insertValue(md + "\n");
-                            resolve();
-                        };
-                        reader.readAsDataURL(f);
-                    });
+                handler: async (files) => {
+                    if (!files || !files.length) return null;
+                    for (const f of files) {
+                        const dataURL = await readFileAsDataURL(f);
+                        const md = await buildImageMarkdown(f.name, dataURL);
+                        state.vditor.insertValue(md + "\n");
+                    }
+                    return null;
                 },
             },
         });
+    }
+
+    // =====================================================
+    // 图片：内联 base64 ↔ 独立文件
+    // =====================================================
+    let imageNameSeq = 0;
+
+    function externalImagesEnabled() {
+        return localStorage.getItem(LS_KEYS.extImages) === "1";
+    }
+
+    // 让编辑器里相对路径图片（assets/xxx.png）相对「当前文档所在目录」解析，
+    // 否则会相对应用包解析而显示裂图。用 <base> 指向文档目录；Markdown 里仍是
+    // 相对路径（getAttribute('src') 不变），保存内容不受影响。
+    function setImageBase(dir) {
+        if (!ELECTRON) return;
+        let base = document.getElementById("doc-img-base");
+        if (!base) {
+            base = document.createElement("base");
+            base.id = "doc-img-base";
+            document.head.appendChild(base);
+        }
+        base.href = dir ? "file://" + encodeURI(dir).replace(/#/g, "%23") + "/" : "";
+    }
+
+    function readFileAsDataURL(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error || new Error("读取失败"));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    const MIME_EXT = {
+        "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/gif": "gif",
+        "image/webp": "webp", "image/svg+xml": "svg", "image/bmp": "bmp", "image/x-icon": "ico",
+    };
+
+    function parseDataURL(dataURL) {
+        const m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]*)$/.exec(dataURL || "");
+        if (!m) return null;
+        const mime = m[1].toLowerCase();
+        const ext = MIME_EXT[mime] || mime.split("/")[1].replace("+xml", "");
+        return { mime, ext, base64: m[2] };
+    }
+
+    function uniqueImageName(orig, ext) {
+        // 只剔除文件系统不安全字符与空白，保留中文等 Unicode 文字
+        let base = String(orig || "image")
+            .replace(/\.[^.]+$/, "")
+            .replace(/[\/\\:*?"<>| -]+/g, "_")
+            .replace(/\s+/g, "_")
+            .replace(/^[._]+|[._]+$/g, "")
+            .slice(0, 40);
+        if (!base) base = "image";
+        imageNameSeq += 1;
+        return `${base}-${Date.now()}-${imageNameSeq}.${ext}`;
+    }
+
+    // 决定插入内联 base64 还是落地为 assets/ 文件
+    async function buildImageMarkdown(name, dataURL) {
+        if (externalImagesEnabled() && ELECTRON && state.filePath) {
+            const parsed = parseDataURL(dataURL);
+            if (parsed) {
+                try {
+                    const dir = await ELECTRON.dirname(state.filePath);
+                    const rel = await ELECTRON.writeImage(dir, uniqueImageName(name, parsed.ext), parsed.base64);
+                    return `![${name || ""}](${rel})`;
+                } catch (e) {
+                    toast("图片落地失败，改用内联：" + e.message);
+                }
+            }
+        }
+        return `![${name || ""}](${dataURL})`;
+    }
+
+    function toggleExternalImages() {
+        const on = !externalImagesEnabled();
+        localStorage.setItem(LS_KEYS.extImages, on ? "1" : "0");
+        toast(`图片存为独立文件：${on ? "开" : "关"}` + (on && !state.filePath ? "（未保存的文档仍用内联，存盘后生效）" : ""));
+    }
+
+    // 瘦身：把当前文档里的内联 base64 图片导出为 assets/ 文件，原文件先备份
+    async function exportInlineImages() {
+        if (!ELECTRON) return toast("仅桌面版支持导出图片");
+        if (!state.filePath) return toast("请先保存文档，再导出图片");
+        const content = state.vditor.getValue();
+        const re = /!\[([^\]]*)\]\((data:image\/[^)\s]+)\)/g;
+        const hits = [];
+        let m;
+        while ((m = re.exec(content)) !== null) hits.push({ full: m[0], alt: m[1], dataURL: m[2] });
+        if (!hits.length) return toast("当前文档没有内联图片");
+        try {
+            const dir = await ELECTRON.dirname(state.filePath);
+            const bak = `${state.filePath}.bak-${Date.now()}`;
+            await ELECTRON.copyFile(state.filePath, bak);
+            let out = content;
+            let count = 0;
+            for (const h of hits) {
+                const parsed = parseDataURL(h.dataURL);
+                if (!parsed) continue;
+                const rel = await ELECTRON.writeImage(dir, uniqueImageName(h.alt || "image", parsed.ext), parsed.base64);
+                out = out.replace(h.full, `![${h.alt}](${rel})`);
+                count += 1;
+            }
+            suppressChangeTracking();
+            state.vditor.setValue(out);
+            resumeChangeTracking();
+            await actionSave();
+            toast(`已导出 ${count} 张图片到 assets/，原文件已备份为 ${bak.split(/[\\/]/).pop()}`);
+        } catch (e) {
+            toast("导出失败：" + e.message);
+        }
     }
 
     // =====================================================
@@ -962,6 +1073,7 @@ $$
                 await ELECTRON.writeFile(target, text);
                 state.filePath = target;
                 state.filename = target.split(/[\\/]/).pop();
+                try { setImageBase(await ELECTRON.dirname(target)); } catch (_) {}
                 markSaved();
                 updateTitle();
                 toast(`已保存 ${state.filename}`);
@@ -1372,6 +1484,8 @@ ${body}
             case "toggle-outline": return toggleOutline();
             case "toggle-theme": return toggleTheme();
             case "toggle-typewriter": return toggleTypewriter();
+            case "toggle-ext-images": return toggleExternalImages();
+            case "export-inline-images": return exportInlineImages();
             case "help-syntax": return window.open("https://commonmark.org/help/", "_blank");
             case "help-math": return $("modal-math").hidden = false;
             case "help-about": return $("modal-about").hidden = false;
@@ -1507,6 +1621,8 @@ ${body}
 
     async function applyOpenedFile(filePath, content) {
         if (state.dirty && !confirm("当前文档有未保存的修改，是否丢弃并打开新文件？")) return;
+        // 渲染前先把图片基准目录设好，否则相对路径图片会按应用包解析成裂图
+        setImageBase(filePath.replace(/[\\/][^\\/]*$/, ""));
         setEditorContent(content);
         state.filePath = filePath;
         state.filename = filePath.split(/[\\/]/).pop();
@@ -1519,6 +1635,7 @@ ${body}
         if (ELECTRON) {
             try {
                 const dir = await ELECTRON.dirname(filePath);
+                setImageBase(dir);
                 if (!state.workspace || !filePath.startsWith(state.workspace + "/")) {
                     await setWorkspace(dir);
                 } else {
