@@ -241,8 +241,50 @@ $$
         return text.replace(/\${3,}/g, "$$$$");
     }
 
+    // ChatGPT 导出常把公式块包在无语言代码围栏里（```\n$$...$$\n```），粘贴/打开
+    // 后显示为代码而非公式。解开为标准多行公式块。仅当围栏内是单个完整
+    // $$...$$（内部不再含 $$）时才解，避免误伤真代码。
+    function unwrapFencedMath(md) {
+        if (md.indexOf("```") === -1 || md.indexOf("$$") === -1) return md;
+        return md.replace(
+            /^[ \t]*```[ \t]*\r?\n[ \t]*\$\$((?:(?!\$\$)[\s\S])*?)\$\$[ \t]*\r?\n[ \t]*```[ \t]*$/gm,
+            (_m, body) => `$$\n${body.trim()}\n$$`);
+    }
+
+    // 删除空公式块。$$ 定界符本身分不出「开/闭」，纯正则会把「上一块闭合 $$ +
+    // 空行 + 下一块开头 $$」误当空块而合并相邻公式，因此从头顺序配对：
+    // 遇到独占行 $$ 视为开块，若到配对 $$ 之间只有空行则为空块、整段删除；
+    // 有内容则原样保留到闭合行。
+    function removeEmptyMathBlocks(text) {
+        if (text.indexOf("$$") === -1) return text;
+        const lines = text.split("\n");
+        const isDelim = (l) => /^[ \t]*\$\$[ \t]*$/.test(l);
+        const isBlank = (l) => /^[ \t]*$/.test(l);
+        const out = [];
+        let i = 0;
+        while (i < lines.length) {
+            if (isDelim(lines[i])) {
+                let j = i + 1;
+                while (j < lines.length && isBlank(lines[j])) j += 1;
+                if (j < lines.length && isDelim(lines[j])) { i = j + 1; continue; } // 空块，跳过
+                out.push(lines[i]); i += 1;                       // 开块
+                while (i < lines.length && !isDelim(lines[i])) { out.push(lines[i]); i += 1; }
+                if (i < lines.length) { out.push(lines[i]); i += 1; } // 闭合行
+                continue;
+            }
+            out.push(lines[i]); i += 1;
+        }
+        return out.join("\n");
+    }
+
     function convertLatexDelimitersInSegment(text) {
-        let out = fixDollarRuns(text);
+        let out = text;
+        // ① 仅由 3+ 个 $ 组成的行是自动补全叠出的空块残骸，整行删除
+        out = out.replace(/^[ \t]*\${3,}[ \t]*$/gm, "");
+        // ② 行内紧贴内容的 3+ 连续 $ 归约为 $$
+        out = fixDollarRuns(out);
+        // ③ 空公式块删除（顺序配对，避免误合并相邻公式块）
+        out = removeEmptyMathBlocks(out);
         // 块级：\[ 与 \] 各占一行（LLM 导出的典型格式），无条件转换
         out = out.replace(/^[ \t]*\\\[[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\\\][ \t]*$/gm,
             (_m, body) => `$$\n${fixAngles(body)}\n$$`);
@@ -253,6 +295,10 @@ $$
         // （含 \(q\)、\(R\) 这类单字母变量；已知是公式，尖括号无条件保护）
         out = out.replace(/(^|[^\\])\\\(([^\n]*?[^\\]|)\\\)/g, (_m, pre, body) =>
             `${pre}$${fixAngles(body.trim())}$`);
+        // ④ 单行独立 $$x$$ 规范为多行块：单行形式会触发编辑器的 $$ 自动补全，
+        // 叠出错位定界符（用户反馈的公式块损坏根源），多行形式则稳定
+        out = out.replace(/^[ \t]*\$\$([^\n$][^\n]*?)\$\$[ \t]*$/gm,
+            (_m, b) => `$$\n${b.trim()}\n$$`);
         // 兜底：处理本就用 $ 定界、未经上面转换的公式里的尖括号
         return replaceAnglesInMath(out);
     }
@@ -260,11 +306,13 @@ $$
     function convertLatexDelimiters(md) {
         if (!md) return md;
         // 需要处理的情况：① 含 \[ \( 定界符；② 含 $ 公式且内部有尖括号需保护；
-        // ③ 含 $$$ 连续美元坏定界符（$$ 自动补全叠加产生）
+        // ③ 含 $$（围栏解包 / 连续美元残骸 / 空块 / 单行块规范化）。管线幂等。
         const hasLatexDelim = md.indexOf("\\[") !== -1 || md.indexOf("\\(") !== -1;
         const hasMathAngle = md.indexOf("$") !== -1 && /[<>]/.test(md);
-        const hasDollarRun = md.indexOf("$$$") !== -1;
-        if (!hasLatexDelim && !hasMathAngle && !hasDollarRun) return md;
+        const hasBlockMath = md.indexOf("$$") !== -1;
+        if (!hasLatexDelim && !hasMathAngle && !hasBlockMath) return md;
+        // 先解开包公式的代码围栏（在围栏保护之前，否则会被当代码跳过）
+        md = unwrapFencedMath(md);
         const lines = md.split("\n");
         const out = [];
         let plain = [];
