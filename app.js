@@ -188,11 +188,12 @@ $$
         resumeChangeTracking();
     }
 
-    // 失焦时修正表格内公式（覆盖直接输入 / 粘贴后 "|" 拆坏公式的情况），并触发重新渲染。
+    // 失焦时修正公式（表格内 "|"、$$ 自动补全叠出的 $$$、\(\) 定界符等），并触发重新渲染。
+    // convertLatexDelimiters 幂等且带代码围栏/行内代码保护，无改动时不触碰编辑器。
     function fixTableMathInEditor() {
         if (!state.vditor || typeof state.vditor.getValue !== "function") return;
         const current = state.vditor.getValue();
-        const fixed = escapePipesInTableMath(current);
+        const fixed = escapePipesInTableMath(convertLatexDelimiters(current));
         if (fixed === current) return;
         suppressChangeTracking();
         state.vditor.setValue(fixed);
@@ -232,8 +233,16 @@ $$
         return out;
     }
 
+    // 清理连续 3 个及以上的 $。单行 $$...$$ 输入/粘贴时编辑器的 $$ 自动补全会
+    // 叠出 $$$$、$$$ 这类坏定界符，导致公式解析错乱。统一归约为 $$。
+    // （代码围栏与行内代码已在上层管线被保护，不会误伤。）
+    function fixDollarRuns(text) {
+        if (text.indexOf("$$$") === -1) return text;
+        return text.replace(/\${3,}/g, "$$$$");
+    }
+
     function convertLatexDelimitersInSegment(text) {
-        let out = text;
+        let out = fixDollarRuns(text);
         // 块级：\[ 与 \] 各占一行（LLM 导出的典型格式），无条件转换
         out = out.replace(/^[ \t]*\\\[[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\\\][ \t]*$/gm,
             (_m, body) => `$$\n${fixAngles(body)}\n$$`);
@@ -250,10 +259,12 @@ $$
 
     function convertLatexDelimiters(md) {
         if (!md) return md;
-        // 需要处理的两种情况：① 含 \[ \( 定界符；② 含 $ 公式且内部有尖括号需保护
+        // 需要处理的情况：① 含 \[ \( 定界符；② 含 $ 公式且内部有尖括号需保护；
+        // ③ 含 $$$ 连续美元坏定界符（$$ 自动补全叠加产生）
         const hasLatexDelim = md.indexOf("\\[") !== -1 || md.indexOf("\\(") !== -1;
         const hasMathAngle = md.indexOf("$") !== -1 && /[<>]/.test(md);
-        if (!hasLatexDelim && !hasMathAngle) return md;
+        const hasDollarRun = md.indexOf("$$$") !== -1;
+        if (!hasLatexDelim && !hasMathAngle && !hasDollarRun) return md;
         const lines = md.split("\n");
         const out = [];
         let plain = [];
